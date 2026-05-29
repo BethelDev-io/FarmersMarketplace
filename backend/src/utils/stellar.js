@@ -202,28 +202,16 @@ async function getTransactions(publicKey, { cursor, limit = 20 } = {}) {
   }
 }
 
-function generatePaymentLink({ destination, amount, memo, memoType = 'text', assetCode = 'XLM', assetIssuer }) {
-  if (!destination) throw new Error('destination is required for SEP-0007 link');
-  if (!amount || Number.isNaN(parseFloat(amount))) throw new Error('valid amount is required for SEP-0007 link');
-
-  const url = new URL('web+stellar:pay');
-  url.searchParams.set('destination', destination);
-  url.searchParams.set('amount', Number(amount).toFixed(7));
-
-  if (memo != null) {
-    url.searchParams.set('memo', String(memo));
-    url.searchParams.set('memo_type', memoType);
-  }
-
-  if (assetCode && assetCode.toUpperCase() !== 'XLM') {
-    url.searchParams.set('asset_code', assetCode);
-    if (!assetIssuer) {
-      throw new Error('assetIssuer is required for non-native SEP-0007 assets');
-    }
-    url.searchParams.set('asset_issuer', assetIssuer);
-  }
-
-  return url.toString();
+function generatePaymentLink({ destination, amount, assetCode, assetIssuer, memo }) {
+  const params = new URLSearchParams({
+    destination,
+    amount,
+    asset_code: assetCode,
+    asset_issuer: assetIssuer,
+    ...(memo ? { memo, memo_type: 'text' } : {}),
+  });
+  return `web+stellar:pay?${params.toString()}`;
+}
 // In-memory cache: publicKey -> { federationAddress, expiresAt }
 const _federationCache = new Map();
 const FEDERATION_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -503,7 +491,24 @@ async function getContractWasmHash(contractId) {
     throw err;
   }
 
-  return Buffer.from(raw).toString("hex").toLowerCase();
+  const hash = Buffer.from(raw).toString("hex").toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(hash)) {
+    const e = new Error(`Unexpected WASM hash format: ${hash}`);
+    e.code = "parse_error";
+    throw e;
+  }
+  return hash;
+}
+
+/**
+ * Validate and normalize a WASM hash to 64-char lowercase hex.
+ * Returns the normalized hash, or null if invalid.
+ */
+function normalizeWasmHash(h) {
+  if (h == null || typeof h !== 'string') return null;
+  const x = h.trim().toLowerCase().replace(/^0x/, '');
+  if (!/^[0-9a-f]{64}$/.test(x)) return null;
+  return x;
 }
 
 /**
@@ -1472,6 +1477,7 @@ module.exports = {
   invokeContract,
   simulateContract,
   getMemo,
+  normalizeWasmHash,
 };
 
 // .

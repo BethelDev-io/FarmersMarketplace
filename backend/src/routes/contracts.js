@@ -10,13 +10,10 @@ function validateContractId(contractId) {
 }
 
 const ARGS_MAX_BYTES = 65535;
-const TRUNCATED_SUFFIX = ' [truncated]';
 
-function truncateArgs(args) {
-  if (args == null) return null;
-  const serialised = JSON.stringify(args);
-  if (serialised.length <= ARGS_MAX_BYTES) return serialised;
-  return serialised.slice(0, ARGS_MAX_BYTES - TRUNCATED_SUFFIX.length) + TRUNCATED_SUFFIX;
+function argsExceedLimit(args) {
+  if (args == null) return false;
+  return JSON.stringify(args).length > ARGS_MAX_BYTES;
 }
 
 async function logInvocation({ contractId, method, args, result, txHash, success, error, userId }) {
@@ -27,7 +24,7 @@ async function logInvocation({ contractId, method, args, result, txHash, success
       [
         contractId,
         method,
-        truncateArgs(args),
+        args != null ? JSON.stringify(args) : null,
         result != null ? JSON.stringify(result) : null,
         txHash || null,
         success ? 1 : 0,
@@ -53,6 +50,9 @@ router.post('/:contractId/simulate', auth, adminAuth, async (req, res) => {
   }
   if (args !== undefined && !Array.isArray(args)) {
     return err(res, 400, 'args must be an array', 'invalid_body');
+  }
+  if (argsExceedLimit(args)) {
+    return err(res, 400, `args must not exceed ${ARGS_MAX_BYTES} bytes when serialized`, 'args_too_large');
   }
 
   const net = (process.env.STELLAR_NETWORK || 'testnet').toLowerCase();
@@ -81,15 +81,37 @@ router.post('/:contractId/simulate', auth, adminAuth, async (req, res) => {
   return res.json(out);
 });
 
-// GET /api/contracts/:contractId/state?prefix=  (admin only)
-router.get('/:contractId/state', auth, adminAuth, async (req, res) => {
+// GET /api/contracts/:contractId/state?prefix=
+// Admins: unrestricted. Non-admins: only contracts linked to their own orders.
+router.get('/:contractId/state', auth, async (req, res) => {
   const { contractId } = req.params;
   if (!validateContractId(contractId)) {
     return err(res, 400, 'Invalid contractId format (base32 or hex expected)', 'invalid_contract_id');
   }
 
+  // Validate prefix to prevent injection (printable ASCII, no control chars)
+  const prefix = req.query.prefix || null;
+  if (prefix !== null && !/^[\x20-\x7E]{0,128}$/.test(prefix)) {
+    return err(res, 400, 'Invalid prefix parameter', 'invalid_prefix');
+  }
+
+  const isAdmin = req.user.role === 'admin';
+  if (!isAdmin) {
+    // Non-admins may only query contracts associated with their own orders
+    const { rows } = await db.query(
+      `SELECT 1 FROM orders o
+       JOIN contracts_registry cr ON cr.contract_id = $1
+       WHERE o.buyer_id = $2 AND o.escrow_balance_id LIKE 'soroban:%'
+       LIMIT 1`,
+      [contractId, req.user.id],
+    );
+    if (!rows.length) {
+      return err(res, 403, 'Access denied', 'forbidden');
+    }
+  }
+
   try {
-    const state = await getContractState(contractId, req.query.prefix || null);
+    const state = await getContractState(contractId, prefix);
     res.json({ success: true, data: state });
   } catch (error) {
     if (error.code === 404 || error.message?.includes('not found')) {
