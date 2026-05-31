@@ -128,6 +128,8 @@ export default function Orders() {
   const esRef = useRef(null);
   const reconnectTimerRef = useRef(null);
   const retriedRef = useRef(false);
+  const [exporting, setExporting] = useState(null);
+  const [exportError, setExportError] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -208,6 +210,18 @@ export default function Orders() {
     }
   }
 
+  async function handleExport(format) {
+    setExporting(format);
+    setExportError(null);
+    try {
+      await api.exportOrders(format);
+    } catch (e) {
+      setExportError(e.message || 'Export failed');
+    } finally {
+      setExporting(null);
+    }
+  }
+
   const stats = {
     total:   allOrders.length,
     paid:    allOrders.filter(o => o.status === 'paid').length,
@@ -243,6 +257,48 @@ export default function Orders() {
       </Helmet>
       <div style={s.title}>📦 My Orders</div>
       <div style={s.sub}>Track your purchases and verify transactions</div>
+
+      {exportError && (
+        <div style={{ background: '#fee', color: '#c0392b', border: '1px solid #f5a5a5', borderRadius: 8, padding: 16, marginBottom: 20 }}>
+          ⚠️ {exportError}
+        </div>
+      )}
+
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: 'inline-block', position: 'relative' }}>
+          <button
+            style={{ background: '#2d6a4f', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: exporting ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600, opacity: exporting ? 0.7 : 1 }}
+            disabled={exporting}
+            onClick={(e) => {
+              const menu = e.currentTarget.nextElementSibling;
+              menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+            }}
+          >
+            {exporting ? `⏳ Exporting as ${exporting.toUpperCase()}...` : '📥 Export'}
+          </button>
+          <div
+            style={{
+              position: 'absolute', top: '100%', left: 0, marginTop: 4, background: '#fff', border: '1px solid #ddd', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 10, display: 'none', minWidth: 140
+            }}
+            onClick={(e) => e.currentTarget.style.display = 'none'}
+          >
+            <button
+              style={{ width: '100%', padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', fontSize: 13, color: '#333', borderBottom: '1px solid #eee' }}
+              onClick={() => handleExport('csv')}
+              disabled={exporting}
+            >
+              📄 Export as CSV
+            </button>
+            <button
+              style={{ width: '100%', padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', fontSize: 13, color: '#333' }}
+              onClick={() => handleExport('pdf')}
+              disabled={exporting}
+            >
+              📋 Export as PDF
+            </button>
+          </div>
+        </div>
+      </div>
 
       {error && (
         <div style={{ background: '#fee', color: '#c0392b', border: '1px solid #f5a5a5', borderRadius: 8, padding: 16, marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

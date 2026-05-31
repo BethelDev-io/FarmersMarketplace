@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import Spinner from '../components/Spinner';
 import { getStellarErrorMessage } from '../utils/stellarErrors';
 import { getErrorMessage } from '../utils/errorMessages';
+import { showToast } from '../utils/toast';
 import { useTranslation } from 'react-i18next';
 
 const DISCLAIMER_KEY = 'testnet_disclaimer_dismissed';
@@ -123,7 +124,9 @@ export default function Wallet() {
       setWallet(w);
       setTxs(txData.data ?? txData);
     } catch (e) {
-      setLoadError(getStellarErrorMessage(e) || getErrorMessage(e));
+      const msg = getStellarErrorMessage(e) || getErrorMessage(e);
+      setLoadError(msg);
+      showToast(msg, 'error');
     } finally {
       setLoading(false);
     }
@@ -198,7 +201,9 @@ export default function Wallet() {
       setFundMsg({ type: 'ok', text: res.message });
       load();
     } catch (e) {
-      setFundMsg({ type: 'err', text: getStellarErrorMessage(e) || getErrorMessage(e) });
+      const msg = getStellarErrorMessage(e) || getErrorMessage(e);
+      setFundMsg({ type: 'err', text: msg });
+      showToast(msg, 'error');
     } finally {
       setFunding(false);
     }
