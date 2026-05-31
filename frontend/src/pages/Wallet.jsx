@@ -7,6 +7,7 @@ import { getStellarErrorMessage } from '../utils/stellarErrors';
 import { getErrorMessage } from '../utils/errorMessages';
 import { showToast } from '../utils/toast';
 import { useTranslation } from 'react-i18next';
+import { useXlmRate } from '../utils/useXlmRate';
 
 const DISCLAIMER_KEY = 'testnet_disclaimer_dismissed';
 const RECONNECT_BASE_MS = 1000;
@@ -57,13 +58,15 @@ if (typeof document !== 'undefined' && !document.getElementById('wallet-toast-st
   document.head.appendChild(style);
 }
 
-function Toast({ toasts }) {
+function Toast({ toasts, usd }) {
   return (
     <div style={s.toastContainer} aria-live="polite">
       {toasts.map(t => (
         <div key={t.id} style={s.toast} role="status">
           <div style={s.toastTitle}>Payment received</div>
-          <div style={s.toastSub}>+{parseFloat(t.amount).toFixed(2)} XLM from {t.from.slice(0, 8)}...{t.from.slice(-4)}</div>
+          <div style={s.toastSub}>
+            +{parseFloat(t.amount).toFixed(2)} XLM {usd(parseFloat(t.amount)) && <span style={{ fontSize: 11, color: '#bbb' }}>({usd(parseFloat(t.amount))})</span>} from {t.from.slice(0, 8)}...{t.from.slice(-4)}
+          </div>
         </div>
       ))}
     </div>
@@ -73,6 +76,7 @@ function Toast({ toasts }) {
 export default function Wallet() {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const { usd } = useXlmRate();
   const [disclaimerVisible, setDisclaimerVisible] = useState(() => localStorage.getItem(DISCLAIMER_KEY) !== 'true');
   const [wallet, setWallet]       = useState(null);
   const [txs, setTxs]             = useState([]);
@@ -294,7 +298,7 @@ export default function Wallet() {
         <title>My Wallet – Farmers Marketplace</title>
         <meta name="description" content="Manage your Stellar XLM wallet, view balance and transaction history." />
       </Helmet>
-      <Toast toasts={toasts} />
+      <Toast toasts={toasts} usd={usd} />
       <div style={s.title}>My Wallet</div>
 
       {reconnecting && (
@@ -336,9 +340,19 @@ export default function Wallet() {
           <div style={s.card}>
             <div style={{ fontSize: 13, color: '#888', marginBottom: 4 }}>XLM Balance</div>
             <div style={s.balance}>{wallet ? wallet.balance.toFixed(2) : '-'} XLM</div>
+            {wallet && usd(wallet.balance) && (
+              <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
+                {usd(wallet.balance)} <span style={{ fontSize: 11, color: '#bbb' }}>approx.</span>
+              </div>
+            )}
             <div style={{ fontSize: 13, color: '#555', marginTop: 6 }}>
               Available to withdraw: {wallet ? (wallet.availableBalance ?? Math.max(0, wallet.balance - 1)).toFixed(2) : '-'} XLM
             </div>
+            {wallet && wallet.availableBalance && usd(wallet.availableBalance) && (
+              <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
+                {usd(wallet.availableBalance)} <span style={{ fontSize: 11, color: '#bbb' }}>approx.</span>
+              </div>
+            )}
             <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>Includes 1.00 XLM base reserve</div>
             <div style={s.key}>{wallet?.publicKey}</div>
             <div style={{ fontSize: 12, color: '#888', marginTop: 10 }}>
@@ -594,6 +608,11 @@ export default function Wallet() {
                 <div style={tx.type === 'sent' ? s.sent : s.recv}>
                   {tx.type === 'sent' ? '↑ Sent' : '↓ Received'} {parseFloat(tx.amount).toFixed(2)} XLM
                 </div>
+                {usd(parseFloat(tx.amount)) && (
+                  <div style={{ fontSize: 11, color: '#aaa', marginTop: 1 }}>
+                    {usd(parseFloat(tx.amount))}
+                  </div>
+                )}
                 <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{new Date(tx.created_at).toLocaleString()}</div>
                 <div style={{ fontSize: 12, color: '#555', marginTop: 4 }}>
                   {tx.type === 'sent' ? 'To: ' : 'From: '}
