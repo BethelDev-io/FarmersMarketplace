@@ -34,6 +34,10 @@ pub enum EscrowError {
     NotTimedOut = 4,
     AlreadySettled = 5,
     InvalidParties = 6,
+    /// Contract has already been initialised.
+    AlreadyInitialized = 7,
+    /// Snapshot not found for the given snapshot_id.
+    SnapshotNotFound = 8,
 }
 
 /// Roles for ACL management (#687).
@@ -90,6 +94,12 @@ impl EscrowContract {
         let key = DataKey::Escrow(order_id);
         if env.storage().persistent().has(&key) {
             return Err(EscrowError::AlreadyExists);
+        }
+
+        // Fix #470 — timeout must be at least 1 hour in the future
+        let now = env.ledger().timestamp();
+        if timeout_unix <= now.saturating_add(MIN_TIMEOUT_SECS) {
+            panic!("timeout must be at least 1 hour in the future");
         }
 
         buyer.require_auth();
@@ -235,8 +245,10 @@ impl EscrowContract {
         let key = DataKey::Escrow(order_id);
         env.storage()
             .persistent()
-            .get(&key)
-            .ok_or(EscrowError::NotFound)
+            .get(&snap_key)
+            .ok_or(EscrowError::SnapshotNotFound)?;
+
+        Ok(snap.balances.get(addr).unwrap_or(0))
     }
 }
 
