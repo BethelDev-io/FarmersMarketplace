@@ -1,0 +1,340 @@
+const { StellarSdk, isTestnet, server, networkPassphrase } = require('./stellar-config');
+const { getBalance } = require('./stellar-accounts');
+
+const FEE_BUMP_THRESHOLD_XLM = parseFloat(process.env.FEE_BUMP_THRESHOLD_XLM || '2');
+
+async function wrapWithFeeBump(innerTx, feeAccountSecret) {
+  const feeKeypair = StellarSdk.Keypair.fromSecret(feeAccountSecret);
+  const feeBumpTx = StellarSdk.TransactionBuilder.buildFeeBumpTransaction(
+    feeKeypair,
+    StellarSdk.BASE_FEE * 10,
+    innerTx,
+    networkPassphrase
+  );
+  feeBumpTx.sign(feeKeypair);
+  return feeBumpTx;
+}
+
+async function sendPayment({ senderSecret, receiverPublicKey, amount, memo }) {
+  const senderKeypair = StellarSdk.Keypair.fromSecret(senderSecret);
+  let senderAccount;
+  try {
+    senderAccount = await server.loadAccount(senderKeypair.publicKey());
+  } catch (error) {
+    if (error.response && error.response.status === 404) {
+      const err = new Error('Stellar account not found. Please fund your wallet to activate it.');
+      err.code = 'account_not_found';
+      throw err;
+    }
+    throw error;
+  }
+
+  const feePercent = parseFloat(process.env.PLATFORM_FEE_PERCENT || '0');
+  const platformWallet = process.env.PLATFORM_WALLET_PUBLIC_KEY;
+  const farmerAmount =
+    feePercent > 0 && platformWallet
+      ? parseFloat((amount * (1 - feePercent / 100)).toFixed(7))
+      : amount;
+  const feeAmount =
+    feePercent > 0 && platformWallet ? parseFloat((amount * (feePercent / 100)).toFixed(7)) : 0;
+
+  const txBuilder = new StellarSdk.TransactionBuilder(senderAccount, {
+    fee: StellarSdk.BASE_FEE,
+    networkPassphrase,
+  })
+    .addOperation(
+      StellarSdk.Operation.payment({
+        destination: receiverPublicKey,
+        asset: StellarSdk.Asset.native(),
+        amount: farmerAmount.toFixed(7),
+      })
+    )
+    .addMemo(StellarSdk.Memo.text(memo || 'FarmersMarket'))
+    .setTimeout(30);
+
+  if (feeAmount > 0 && platformWallet) {
+    txBuilder.addOperation(
+      StellarSdk.Operation.payment({
+        destination: platformWallet,
+        asset: StellarSdk.Asset.native(),
+        amount: feeAmount.toFixed(7),
+      })
+    );
+  }
+
+  const transaction = txBuilder.build();
+  transaction.sign(senderKeypair);
+
+  const feeAccountSecret = process.env.PLATFORM_FEE_ACCOUNT_SECRET;
+  const buyerBalance = await getBalance(senderKeypair.publicKey());
+  const usedFeeBump = feeAccountSecret && buyerBalance < FEE_BUMP_THRESHOLD_XLM;
+
+  let txToSubmit = transaction;
+  if (usedFeeBump) {
+    txToSubmit = await wrapWithFeeBump(transaction, feeAccountSecret);
+  }
+
+  const result = await server.submitTransaction(txToSubmit);
+  return result.hash;
+}
+
+async function getTransactions(publicKey, { cursor, limit = 20 } = {}) {
+  try {
+    let call = server.payments().forAccount(publicKey).order('desc').limit(Math.min(limit, 200));
+    if (cursor) call = call.cursor(cursor);
+    const payments = await call.call();
+    const records = payments.records
+      .filter((p) => p.type === 'payment' && p.asset_type === 'native')
+      .map((p) => ({
+        id: p.id,
+        type: p.from === publicKey ? 'sent' : 'received',
+        amount: p.amount,
+        from: p.from,
+        to: p.to,
+        created_at: p.created_at,
+        transaction_hash: p.transaction_hash,
+      }));
+    const next_cursor = payments.records.length > 0
+      ? payments.records[payments.records.length - 1].paging_token
+      : null;
+    const prev_cursor = payments.records.length > 0
+      ? payments.records[0].paging_token
+      : null;
+    return { records, next_cursor, prev_cursor };
+  } catch {
+    return { records: [], next_cursor: null, prev_cursor: null };
+  }
+}
+
+function generatePaymentLink({ destination, amount, assetCode, assetIssuer, memo }) {
+  const params = new URLSearchParams({
+    destination,
+    amount,
+    asset_code: assetCode,
+    asset_issuer: assetIssuer,
+    ...(memo ? { memo, memo_type: 'text' } : {}),
+  });
+  return `web+stellar:pay?${params.toString()}`;
+}
+
+function getPlatformFeeInfo(amount) {
+  const feePercent = parseFloat(process.env.PLATFORM_FEE_PERCENT || '0');
+  const platformWallet = process.env.PLATFORM_WALLET_PUBLIC_KEY || null;
+  if (!feePercent || !platformWallet) {
+    return { feePercent: 0, feeAmount: 0, farmerAmount: amount, platformWallet: null };
+  }
+  const feeAmount = parseFloat(((amount * feePercent) / 100).toFixed(7));
+  const farmerAmount = parseFloat((amount - feeAmount).toFixed(7));
+  return { feePercent, feeAmount, farmerAmount, platformWallet };
+}
+
+async function getPathPaymentEstimate({ sourceAssetCode, sourceAssetIssuer, destAmount }) {
+  const sourceAsset =
+    sourceAssetCode === 'XLM'
+      ? StellarSdk.Asset.native()
+      : new StellarSdk.Asset(sourceAssetCode, sourceAssetIssuer);
+  const destAsset = StellarSdk.Asset.native();
+  const paths = await server
+    .strictReceivePaths(sourceAsset, destAsset, String(parseFloat(destAmount).toFixed(7)))
+    .call();
+  if (!paths.records || paths.records.length === 0) {
+    const e = new Error(`No payment path found from ${sourceAssetCode} to XLM`);
+    e.code = 'no_path';
+    throw e;
+  }
+  const best = paths.records[0];
+  return { sourceAmount: parseFloat(best.source_amount), path: best.path };
+}
+
+async function pathPayment({ senderSecret, sourceAssetCode, sourceAssetIssuer, sendMax, receiverPublicKey, destAmount, memo }) {
+  const keypair = StellarSdk.Keypair.fromSecret(senderSecret);
+  const account = await server.loadAccount(keypair.publicKey());
+  const sourceAsset =
+    sourceAssetCode === 'XLM'
+      ? StellarSdk.Asset.native()
+      : new StellarSdk.Asset(sourceAssetCode, sourceAssetIssuer);
+  const tx = new StellarSdk.TransactionBuilder(account, { fee: StellarSdk.BASE_FEE, networkPassphrase })
+    .addOperation(
+      StellarSdk.Operation.pathPaymentStrictReceive({
+        sendAsset: sourceAsset,
+        sendMax: parseFloat(sendMax).toFixed(7),
+        destination: receiverPublicKey,
+        destAsset: StellarSdk.Asset.native(),
+        destAmount: parseFloat(destAmount).toFixed(7),
+      })
+    )
+    .addMemo(StellarSdk.Memo.text(memo || 'FarmersMarket'))
+    .setTimeout(30)
+    .build();
+  tx.sign(keypair);
+  const result = await server.submitTransaction(tx);
+  return result.hash;
+}
+
+async function createClaimableBalance({ senderSecret, farmerPublicKey, buyerPublicKey, amount }) {
+  const senderKeypair = StellarSdk.Keypair.fromSecret(senderSecret);
+  const senderAccount = await server.loadAccount(senderKeypair.publicKey());
+  const farmerClaimant = new StellarSdk.Claimant(
+    farmerPublicKey,
+    StellarSdk.Claimant.predicateUnconditional()
+  );
+  const buyerClaimant = new StellarSdk.Claimant(
+    buyerPublicKey,
+    StellarSdk.Claimant.predicateNot(StellarSdk.Claimant.predicateBeforeRelativeTime('1209600'))
+  );
+  const transaction = new StellarSdk.TransactionBuilder(senderAccount, { fee: StellarSdk.BASE_FEE, networkPassphrase })
+    .addOperation(
+      StellarSdk.Operation.createClaimableBalance({
+        asset: StellarSdk.Asset.native(),
+        amount: amount.toFixed(7),
+        claimants: [farmerClaimant, buyerClaimant],
+      })
+    )
+    .setTimeout(30)
+    .build();
+  transaction.sign(senderKeypair);
+  const result = await server.submitTransaction(transaction);
+  const claimableBalances = await server
+    .claimableBalances()
+    .claimant(farmerPublicKey)
+    .order('desc')
+    .limit(5)
+    .call();
+  const balance = claimableBalances.records.find(
+    (b) =>
+      b.amount === amount.toFixed(7) && b.claimants.some((c) => c.destination === buyerPublicKey)
+  );
+  if (!balance) throw new Error('Claimable balance not found after creation');
+  return { txHash: result.hash, balanceId: balance.id };
+}
+
+async function claimBalance({ claimantSecret, balanceId }) {
+  const claimantKeypair = StellarSdk.Keypair.fromSecret(claimantSecret);
+  const claimantAccount = await server.loadAccount(claimantKeypair.publicKey());
+  const transaction = new StellarSdk.TransactionBuilder(claimantAccount, { fee: StellarSdk.BASE_FEE, networkPassphrase })
+    .addOperation(StellarSdk.Operation.claimClaimableBalance({ balanceID: balanceId }))
+    .setTimeout(30)
+    .build();
+  transaction.sign(claimantKeypair);
+  const result = await server.submitTransaction(transaction);
+  return result.hash;
+}
+
+async function createPreorderClaimableBalance({ senderSecret, farmerPublicKey, amount, unlockAtUnix }) {
+  const senderKeypair = StellarSdk.Keypair.fromSecret(senderSecret);
+  const senderAccount = await server.loadAccount(senderKeypair.publicKey());
+  const farmerClaimant = new StellarSdk.Claimant(
+    farmerPublicKey,
+    StellarSdk.Claimant.predicateNot(
+      StellarSdk.Claimant.predicateBeforeAbsoluteTime(String(unlockAtUnix))
+    )
+  );
+  const transaction = new StellarSdk.TransactionBuilder(senderAccount, { fee: StellarSdk.BASE_FEE, networkPassphrase })
+    .addOperation(
+      StellarSdk.Operation.createClaimableBalance({
+        asset: StellarSdk.Asset.native(),
+        amount: amount.toFixed(7),
+        claimants: [farmerClaimant],
+      })
+    )
+    .setTimeout(30)
+    .build();
+  transaction.sign(senderKeypair);
+  const result = await server.submitTransaction(transaction);
+  const claimableBalances = await server
+    .claimableBalances()
+    .claimant(farmerPublicKey)
+    .order('desc')
+    .limit(5)
+    .call();
+  const balance = claimableBalances.records.find((b) => b.amount === amount.toFixed(7));
+  if (!balance) throw new Error('Claimable balance not found after creation');
+  return { txHash: result.hash, balanceId: balance.id };
+}
+
+async function mintRewardTokens(buyerAddress, amount) {
+  const contractId = process.env.REWARD_TOKEN_CONTRACT_ID;
+  if (!contractId) {
+    console.warn('[Stellar] REWARD_TOKEN_CONTRACT_ID not set, skipping reward mint');
+    return null;
+  }
+  const adminSecret = process.env.REWARD_TOKEN_ADMIN_SECRET;
+  if (!adminSecret) {
+    console.warn('[Stellar] REWARD_TOKEN_ADMIN_SECRET not set, skipping reward mint');
+    return null;
+  }
+  try {
+    const adminKeypair = StellarSdk.Keypair.fromSecret(adminSecret);
+    const adminAccount = await server.loadAccount(adminKeypair.publicKey());
+    const contract = new StellarSdk.Contract(contractId);
+    const transaction = new StellarSdk.TransactionBuilder(adminAccount, { fee: StellarSdk.BASE_FEE, networkPassphrase })
+      .addOperation(
+        contract.call(
+          'mint',
+          StellarSdk.nativeToScVal(buyerAddress, { type: 'address' }),
+          StellarSdk.nativeToScVal(amount, { type: 'i128' })
+        )
+      )
+      .setTimeout(30)
+      .build();
+    transaction.sign(adminKeypair);
+    const result = await server.submitTransaction(transaction);
+    return result.hash;
+  } catch (error) {
+    console.error('[Stellar] Failed to mint reward tokens:', error.message);
+    return null;
+  }
+}
+
+async function getMemo(txHash) {
+  if (!txHash) return null;
+  try {
+    const tx = await server.transactions().transaction(txHash).call();
+    if (tx.memo_type === 'text' && tx.memo) return tx.memo;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function getOrderBook(
+  baseAsset = { code: 'XLM', issuer: null },
+  counterAsset = {
+    code: 'USDC',
+    issuer: process.env.USDC_ISSUER || 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+  }
+) {
+  const base =
+    baseAsset.code === 'XLM'
+      ? StellarSdk.Asset.native()
+      : new StellarSdk.Asset(baseAsset.code, baseAsset.issuer);
+  const counter =
+    counterAsset.code === 'XLM'
+      ? StellarSdk.Asset.native()
+      : new StellarSdk.Asset(counterAsset.code, counterAsset.issuer);
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Order book request timed out')), 5000)
+  );
+  const result = await Promise.race([server.orderbook(base, counter).call(), timeout]);
+  const bids = (result.bids || []).slice(0, 10);
+  const asks = (result.asks || []).slice(0, 10);
+  const bestBid = bids.length ? parseFloat(bids[0].price) : 0;
+  const bestAsk = asks.length ? parseFloat(asks[0].price) : 0;
+  const midPrice = bestBid && bestAsk ? (bestBid + bestAsk) / 2 : bestBid || bestAsk || 0;
+  return { bids, asks, midPrice };
+}
+
+module.exports = {
+  sendPayment,
+  getTransactions,
+  generatePaymentLink,
+  getPlatformFeeInfo,
+  getPathPaymentEstimate,
+  pathPayment,
+  createClaimableBalance,
+  claimBalance,
+  createPreorderClaimableBalance,
+  mintRewardTokens,
+  getMemo,
+  getOrderBook,
+};

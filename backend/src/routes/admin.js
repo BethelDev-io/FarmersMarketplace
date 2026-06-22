@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const db = require('../db/schema');
 const adminAuth = require('../middleware/adminAuth');
-const { sendPayment } = require('../stellar');
+const { sendPayment } = require('../utils/stellar');
 
 // GET /api/admin/returns - list all return requests
 router.get('/returns', adminAuth, (req, res) => {
