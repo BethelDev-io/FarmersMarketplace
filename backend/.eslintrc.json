@@ -16,6 +16,22 @@
     "no-console": "warn",
     "no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
     "prefer-const": "error",
-    "no-var": "error"
-  }
+    "no-var": "error",
+    "no-restricted-properties": [
+      "error",
+      {
+        "object": "db",
+        "property": "prepare",
+        "message": "Use the asynchronous db.query API instead."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["**/*.test.js", "**/__tests__/**/*.js"],
+      "rules": {
+        "no-restricted-properties": "off"
+      }
+    }
+  ]
 }
