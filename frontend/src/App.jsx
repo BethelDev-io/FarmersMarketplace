@@ -1,6 +1,5 @@
 import React, { lazy, Suspense, useEffect, useContext } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { HelmetProvider } from 'react-helmet-async';
 import { useTranslation } from 'react-i18next';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { FavoritesProvider } from './context/FavoritesContext';
@@ -121,19 +120,8 @@ export default function App() {
   }, []);
 
   return (
-    <HelmetProvider>
-      <ErrorBoundary>
-        <ThemeProvider>
-          <AuthProvider>
-            <FavoritesProvider>
-              <CompareProvider>
-                <LoadingProvider>
-                  <AppContent />
-                </LoadingProvider>
-              </CompareProvider>
-            </FavoritesProvider>
-          </AuthProvider>
-        </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
         <AuthProvider>
           <FavoritesProvider>
             <CompareProvider>
@@ -145,7 +133,7 @@ export default function App() {
             </CompareProvider>
           </FavoritesProvider>
         </AuthProvider>
-      </ErrorBoundary>
-    </HelmetProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
