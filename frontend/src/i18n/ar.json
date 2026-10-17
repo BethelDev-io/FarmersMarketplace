@@ -164,7 +164,8 @@
     "default": "(Ø§ÙØªØ±Ø§Ø¶ÙŠ)",
     "flashSaleTitle": "Ø¹Ø±Ø¶ Ø³Ø±ÙŠØ¹",
     "flashSaleBanner": "Ø¹Ø±Ø¶ ØªØ±ÙˆÙŠØ¬ÙŠ Ø³Ø±ÙŠØ¹",
-    "flashSaleSavings": "ÙˆÙÙ‘Ø± {{pct}}%"
+    "flashSaleSavings": "ÙˆÙÙ‘Ø± {{pct}}%",
+    "ordersLoadError": "تعذّر تحميل طلباتك — يُرجى المحاولة مرة أخرى"
   },
   "wallet": {
     "title": "ðŸ’³ Ù…Ø­ÙØ¸ØªÙŠ",
@@ -211,7 +212,35 @@
   },
   "pagination": {
     "resultCount_one": "Ù†ØªÙŠØ¬Ø© {{count}}",
-    "resultCount_other": "{{count}} Ù†ØªÙŠØ¬Ø©"
+    "resultCount_other": "{{count}} Ù†ØªÙŠØ¬Ø©",
+    "resultCount_zero": "لا توجد نتائج",
+    "resultCount_two": "نتيجتان",
+    "resultCount_few": "{{count}} نتائج",
+    "resultCount_many": "{{count}} نتيجةً"
+  },
+  "compare": {
+    "title": "مقارنة المنتجات",
+    "description": "قارن منتجات السوق المحددة جنبًا إلى جنب. حدد ما يصل إلى أربعة منتجات في السوق لعرضها هنا.",
+    "exportCsv": "تصدير CSV",
+    "printPdf": "طباعة / حفظ كملف PDF",
+    "noProducts": "لم يتم تحديد أي منتجات للمقارنة بعد.",
+    "selectTwo": "حدد منتجين على الأقل لمقارنتهما جنبًا إلى جنب.",
+    "backToMarketplace": "العودة إلى السوق",
+    "attribute": "السمة",
+    "farmer": "المزارع",
+    "price": "السعر",
+    "quantity": "الكمية",
+    "unit": "الوحدة",
+    "rating": "التقييم",
+    "category": "الفئة",
+    "grade": "الدرجة",
+    "weight": "الوزن",
+    "allergens": "مسببات الحساسية",
+    "freshness": "النضارة",
+    "none": "لا يوجد",
+    "noReviews": "لا توجد مراجعات",
+    "expired": "منتهي الصلاحية",
+    "expiresToday": "تنتهي صلاحيته اليوم",
+    "daysLeft": "متبقٍ {{days}} يوم"
   }
 }
-
