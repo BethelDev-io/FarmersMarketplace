@@ -179,17 +179,11 @@ router.get('/search', listProducts);
 
 // GET /api/products/:id
 router.get('/:id', async (req, res) => {
-  const { rows } = await db.query(`
   const product = (await db.query(`
     SELECT p.*, u.name AS farmer_name, u.stellar_public_key AS farmer_wallet
     FROM products p
     JOIN users u ON p.farmer_id = u.id
     WHERE p.id = $1
-  `, [req.params.id]);
-  const product = rows[0];
-  if (!product) return err(res, 404, 'Product not found', 'not_found');
-
-  if (product.available_from && new Date(product.available_from) > new Date()) {
   `, [req.params.id])).rows[0];
   if (!product) return res.status(404).json({ error: 'Product not found' });
 
@@ -307,12 +301,6 @@ router.post('/', auth, requireEmailVerified, validate.product, async (req, res) 
     values
   );
   const productId = rows[0].id;
-  const { rows: inserted } = await db.query(
-    'INSERT INTO products (farmer_id, name, description, price, quantity, unit, weight_kg) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
-    [req.user.id, name, description || '', price, quantity, unit || 'unit', weight_kg != null ? weight_kg : 1.0]
-  );
-
-  const productId = inserted[0].id;
 
   if (available_from) {
     await db.query('INSERT INTO product_scheduling (product_id, available_from) VALUES ($1, $2)', [
