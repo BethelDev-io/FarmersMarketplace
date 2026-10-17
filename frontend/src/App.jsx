@@ -17,6 +17,7 @@ import PageLoader from './components/PageLoader';
 import UpdatePrompt from './components/UpdatePrompt';
 import { initSentry } from './utils/sentry';
 import { getLocaleDirection } from './i18n';
+import { showToast } from './utils/toast';
 
 const LoginPage = lazy(() => import('./pages/Auth').then(m => ({ default: m.LoginPage })));
 const RegisterPage = lazy(() => import('./pages/Auth').then(m => ({ default: m.RegisterPage })));
@@ -33,17 +34,25 @@ const AddressBook = lazy(() => import('./pages/AddressBook'));
 const Settings = lazy(() => import('./pages/Settings'));
 const AccountRecovery = lazy(() => import('./pages/Settings').then(m => ({ default: m.AccountRecovery })));
 
+function RoleMismatch({ role }) {
+  useEffect(() => {
+    showToast(`This page is for ${role}s only`, 'error');
+  }, [role]);
+  return <Navigate to="/" replace />;
+}
+
 function PrivateRoute({ children, role }) {
   const { user, loading } = useAuth();
-  if (loading) return null;
-  if (!user) return <Navigate to="/login" />;
-  if (role && user.role !== role) return <Navigate to="/" />;
+  const location = useLocation();
+  if (loading) return <PageLoader />;
+  if (!user) return <Navigate to="/login" replace state={{ from: location }} />;
+  if (role && user.role !== role) return <RoleMismatch role={role} />;
   return children;
 }
 
 function Home() {
   const { user, loading } = useAuth();
-  if (loading) return null;
+  if (loading) return <PageLoader />;
   if (!user) return <Navigate to="/login" />;
   if (user.role === 'admin') return <Navigate to="/admin" />;
   return <Navigate to={user.role === 'farmer' ? '/dashboard' : '/marketplace'} />;

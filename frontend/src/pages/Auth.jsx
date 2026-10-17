@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link, useSearchParams } from 'react-router-dom';
+import { useNavigate, useLocation, Link, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -22,6 +22,17 @@ const s = {
   link: { display: 'block', textAlign: 'center', marginTop: 16, color: '#2d6a4f', fontSize: 14 },
   strengthHint: { fontSize: 11, color: '#595959', marginTop: 3 },
 };
+
+// Returns the path the user was trying to reach before being sent to login,
+// falling back to the role's home page. Only same-origin paths are honoured.
+function getPostLoginPath(state, user) {
+  const from = state?.from;
+  if (from?.pathname) {
+    const path = `${from.pathname}${from.search || ''}${from.hash || ''}`;
+    if (path.startsWith('/') && !path.startsWith('//')) return path;
+  }
+  return user.role === 'farmer' ? '/dashboard' : '/marketplace';
+}
 
 function PasswordStrength({ password }) {
   const { t } = useTranslation();
@@ -52,6 +63,7 @@ export function LoginPage() {
   const [formError, setFormError] = useState('');
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const passwordRef = React.useRef(null);
 
   function handleChange(field, value) {
@@ -69,7 +81,7 @@ export function LoginPage() {
     try {
       const { token, user } = await api.login(form);
       login(token, user);
-      navigate(user.role === 'farmer' ? '/dashboard' : '/marketplace');
+      navigate(getPostLoginPath(location.state, user));
     } catch (err) {
       setFormError(getErrorMessage(err));
       setForm(f => ({ ...f, password: '' }));
