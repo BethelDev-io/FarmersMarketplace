@@ -370,9 +370,11 @@ export const api = {
     const { token } = await request('/auth/stream-token');
     return `/api/orders/stream?token=${encodeURIComponent(token || '')}`;
   },
-  getWalletStreamUrl: () => `/api/wallet/stream?token=${encodeURIComponent(accessToken || '')}`,
-  getOrdersStreamUrl: () => `/api/orders/stream?token=${encodeURIComponent(accessToken || '')}`,
-  getMessagesStreamUrl: () => `/api/messages/events?token=${encodeURIComponent(accessToken || '')}`,
+  // Each call mints a single-use ticket, so request a new URL for every (re)connect.
+  getMessagesStreamUrl: async () => {
+    const { ticket } = await request('/messages/stream-ticket', { method: 'POST' });
+    return `${BASE}/messages/events?ticket=${encodeURIComponent(ticket || '')}`;
+  },
   getStockStreamUrl: (productId) => `${BASE}/products/${encodeURIComponent(productId)}/stock-stream`,
   getUnreadMessageCount: () => request('/messages/unread-count'),
 
