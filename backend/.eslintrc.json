@@ -16,6 +16,10 @@
     "no-console": "warn",
     "no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
     "prefer-const": "error",
-    "no-var": "error"
+    "no-var": "error",
+    "no-dupe-keys": "error",
+    "no-redeclare": "error",
+    "no-unreachable": "error",
+    "no-dupe-class-members": "error"
   }
 }
