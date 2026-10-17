@@ -1,7 +1,7 @@
 'use strict';
 
 const jwt = require('jsonwebtoken');
-const { JWT_SECRET } = require('../config');
+const { jwtSecret: JWT_SECRET } = require('../config');
 const User = require('../models/User');
 
 // Per-user cap on concurrent SSE connections. When exceeded, the oldest
@@ -66,7 +66,7 @@ async function sseAuth(req, res, next) {
 
   let payload;
   try {
-    payload = jwt.verify(token, JWT_SECRET);
+    payload = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
   } catch (err) {
     return res.status(401).json({ error: 'Invalid or expired stream token' });
   }
