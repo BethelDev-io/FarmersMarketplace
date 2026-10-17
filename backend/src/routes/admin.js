@@ -9,9 +9,7 @@ const { decryptUserSecretKey } = require('../utils/crypto');
 router.use(auth, requireAdmin);
 
 // GET /api/admin/returns - list all return requests
-router.get('/returns', (req, res) => {
-  const returns = db.prepare(`
-router.get('/returns', adminAuth, async (req, res) => {
+router.get('/returns', async (req, res) => {
   const { rows: returns } = await db.query(`
     SELECT r.*, o.total_price, o.shipping_cost, o.stellar_tx_hash AS order_tx_hash,
            p.name AS product_name,
@@ -27,8 +25,6 @@ router.get('/returns', adminAuth, async (req, res) => {
 
 // POST /api/admin/returns/:id/approve
 router.post('/returns/:id/approve', async (req, res) => {
-  const ret = db.prepare(`
-router.post('/returns/:id/approve', adminAuth, async (req, res) => {
   const ret = (await db.query(`
     SELECT r.*,
            o.total_price, o.shipping_cost,
@@ -68,9 +64,7 @@ router.post('/returns/:id/approve', adminAuth, async (req, res) => {
 });
 
 // POST /api/admin/returns/:id/reject
-router.post('/returns/:id/reject', (req, res) => {
-  const ret = db.prepare('SELECT * FROM returns WHERE id = ?').get(req.params.id);
-router.post('/returns/:id/reject', adminAuth, async (req, res) => {
+router.post('/returns/:id/reject', async (req, res) => {
   const ret = (await db.query('SELECT * FROM returns WHERE id = $1', [req.params.id])).rows[0];
   if (!ret) return res.status(404).json({ error: 'Return request not found' });
   if (ret.status !== 'pending') return res.status(400).json({ error: `Return already ${ret.status}` });
@@ -136,8 +130,7 @@ router.get('/users', async (req, res) => {
 });
 
 // GET /api/admin/orders - list orders with pagination
-router.get('/orders', (req, res) => {
-router.get('/orders', adminAuth, async (req, res) => {
+router.get('/orders', async (req, res) => {
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.max(1, Math.min(100, parseInt(req.query.limit) || 20));
   
@@ -179,8 +172,7 @@ router.get('/orders', adminAuth, async (req, res) => {
 });
 
 // DELETE /api/admin/users/:id - deactivate user
-router.delete('/users/:id', (req, res) => {
-router.delete('/users/:id', adminAuth, async (req, res) => {
+router.delete('/users/:id', async (req, res) => {
   const userId = req.params.id;
   
   const user = (await db.query('SELECT * FROM users WHERE id = $1', [userId])).rows[0];
@@ -192,12 +184,7 @@ router.delete('/users/:id', adminAuth, async (req, res) => {
 });
 
 // GET /api/admin/stats - dashboard statistics
-router.get('/stats', (req, res) => {
-  const totalUsers = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
-  const totalProducts = db.prepare('SELECT COUNT(*) as count FROM products').get().count;
-  const totalOrders = db.prepare('SELECT COUNT(*) as count FROM orders').get().count;
-  const totalRevenue = db.prepare('SELECT COALESCE(SUM(total_price), 0) as total FROM orders WHERE status = ?').get('paid').total;
-router.get('/stats', adminAuth, async (req, res) => {
+router.get('/stats', async (req, res) => {
   const count = async (sql, params) => Number((await db.query(sql, params)).rows[0].count);
   const totalUsers = await count('SELECT COUNT(*) as count FROM users');
   const totalProducts = await count('SELECT COUNT(*) as count FROM products');
@@ -215,9 +202,7 @@ router.get('/stats', adminAuth, async (req, res) => {
 });
 
 // GET /api/admin/analytics/summary - last-30-day platform metrics
-router.get('/analytics/summary', (req, res) => {
-  const gmv = db.prepare(`
-router.get('/analytics/summary', adminAuth, async (req, res) => {
+router.get('/analytics/summary', async (req, res) => {
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
   const gmv = (await db.query(`
     SELECT
@@ -253,7 +238,6 @@ router.get('/analytics/summary', adminAuth, async (req, res) => {
     LIMIT 5
   `, [since]);
 
-  res.json({ gmv, conversion, topProducts });
   // Daily active users: distinct buyers + farmers touched by orders each day
   const { rows: dailyActiveUsers } = await db.query(`
     SELECT day, COUNT(DISTINCT user_id) AS active_users
@@ -291,7 +275,7 @@ router.get('/analytics/summary', adminAuth, async (req, res) => {
 });
 
 // GET /api/admin/failed-emails
-router.get('/failed-emails', adminAuth, async (req, res) => {
+router.get('/failed-emails', async (req, res) => {
   const { rows } = await db.query('SELECT * FROM failed_emails ORDER BY created_at DESC');
   res.json({ success: true, data: rows });
 });
