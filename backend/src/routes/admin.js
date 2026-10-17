@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const db = require('../db/schema');
+const { invalidateAuthStatus } = require('../cache');
 const auth = require('../middleware/auth');
 const requireAdmin = require('../middleware/requireAdmin');
 const { sendPayment } = require('../utils/stellar');
@@ -187,7 +188,8 @@ router.delete('/users/:id', adminAuth, async (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found' });
   
   await db.query('UPDATE users SET active = 0 WHERE id = $1', [userId]);
-  
+  await invalidateAuthStatus(userId);
+
   res.json({ message: 'User deactivated successfully' });
 });
 

@@ -1,6 +1,9 @@
 const jwt = require('jsonwebtoken');
 const db = require('../db/schema');
+const cache = require('../cache');
 const { err } = require('./error');
+
+const AUTH_STATUS_TTL_SECONDS = 30;
 
 module.exports = async (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
@@ -8,9 +11,16 @@ module.exports = async (req, res, next) => {
 
   try {
     req.user = jwt.verify(token, process.env.JWT_SECRET, { clockTolerance: 30 });
-    // Check if user is still active
-    const { rows } = await db.query('SELECT active FROM users WHERE id = $1', [req.user.id]);
-    if (!rows[0] || rows[0].active !== 1) {
+    // Check if user is still active and not banned
+    const cacheKey = `auth:status:${req.user.id}`;
+    let status = await cache.get(cacheKey);
+    if (!status) {
+      const { rows } = await db.query('SELECT active, banned_at FROM users WHERE id = $1', [req.user.id]);
+      const user = rows[0] || {};
+      status = { active: user.active, banned: !!user.banned_at };
+      await cache.set(cacheKey, status, AUTH_STATUS_TTL_SECONDS);
+    }
+    if (status.active !== 1 || status.banned) {
       return err(res, 401, 'Account deactivated', 'deactivated');
     }
     // Defence in depth: authenticated responses must never be stored by
