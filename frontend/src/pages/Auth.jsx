@@ -23,7 +23,9 @@ const s = {
   strengthHint: { fontSize: 11, color: '#595959', marginTop: 3 },
 };
 
-function PasswordStrength({ password }) {
+export const authStyles = s;
+
+export function PasswordStrength({ password }) {
   const { t } = useTranslation();
   const issues = validatePassword(password);
   const score = 4 - issues.length;
@@ -106,6 +108,7 @@ export function LoginPage() {
           {formError && <div style={s.formErr} role="alert">{formError}</div>}
           <button style={s.btn} type="submit">{t('auth.loginBtn')}</button>
         </form>
+        <Link to="/forgot-password" style={s.link}>{t('auth.forgotPassword')}</Link>
         <Link to="/register" style={s.link}>{t('auth.noAccount')}</Link>
         <Link to="/recover" style={{ ...s.link, fontSize: 12, color: '#888' }}>Lost wallet access? Recover with seed phrase</Link>
       </div>

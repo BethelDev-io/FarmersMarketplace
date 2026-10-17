@@ -14,6 +14,7 @@ const REFRESH_TIMEOUT_MS = 10000;
 let accessToken = null;
 let loadingCallback = null;
 let logoutCallback = null;
+let emailNotVerifiedCallback = null;
 // The in-flight refresh, shared by every concurrent 401 (#1381).
 let refreshPromise = null;
 // Latched when a refresh fails so a burst of 401s ends the session once.
@@ -35,6 +36,10 @@ export function setLoadingCallback(fn) {
 
 export function setLogoutCallback(fn) {
   logoutCallback = typeof fn === 'function' ? fn : null;
+}
+
+export function setEmailNotVerifiedCallback(fn) {
+  emailNotVerifiedCallback = typeof fn === 'function' ? fn : null;
 }
 
 function getCsrfToken() {
@@ -204,6 +209,8 @@ async function request(path, options = {}, retry = true, csrfRetry = true) {
       return request(path, options, retry, false);
     }
     if (!res.ok) {
+      // Still thrown to the caller; the global banner is an extra signal (#1390).
+      if (data.code === 'email_not_verified' && emailNotVerifiedCallback) emailNotVerifiedCallback();
       const err = new Error(data.message || data.error || 'Request failed');
       err.code = data.code;
       err.status = res.status;
@@ -246,6 +253,10 @@ export const api = {
   logout: () => request('/auth/logout', { method: 'POST' }),
   refresh: () => refreshAccessToken(),
   getCurrentUser: () => request('/auth/me'),
+  forgotPassword: (email) => request('/auth/forgot-password', { method: 'POST', body: { email } }),
+  resetPassword: (token, password) => request('/auth/reset-password', { method: 'POST', body: { token, password } }),
+  verifyEmail: (token) => request(`/auth/verify-email?token=${encodeURIComponent(token)}`),
+  resendVerification: (email) => request('/auth/resend-verification', { method: 'POST', body: { email } }),
 
   getProducts: (filters = {}) => request(`/products${toQs(filters)}`),
   getCategories: () => request('/products/categories'),
