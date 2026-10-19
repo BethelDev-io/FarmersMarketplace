@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link, useSearchParams } from 'react-router-dom';
+import { useNavigate, useLocation, Link, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -52,6 +52,7 @@ export function LoginPage() {
   const [formError, setFormError] = useState('');
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const passwordRef = React.useRef(null);
 
   function handleChange(field, value) {
@@ -69,7 +70,19 @@ export function LoginPage() {
     try {
       const { token, user } = await api.login(form);
       login(token, user);
-      navigate(user.role === 'farmer' ? '/dashboard' : '/marketplace');
+      
+      // Redirect to intended destination if present, otherwise role default
+      const from = location.state?.from;
+      if (from?.pathname) {
+        const fullPath = from.pathname + (from.search || '');
+        // Only accept same-origin relative paths
+        if (fullPath.startsWith('/') && !fullPath.startsWith('//')) {
+          navigate(fullPath, { replace: true });
+          return;
+        }
+      }
+      
+      navigate(user.role === 'farmer' ? '/dashboard' : '/marketplace', { replace: true });
     } catch (err) {
       setFormError(getErrorMessage(err));
       setForm(f => ({ ...f, password: '' }));

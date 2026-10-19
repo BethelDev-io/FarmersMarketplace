@@ -9,6 +9,7 @@ import { NetworkProvider } from './context/NetworkContext';
 import { LoadingProvider, LoadingContext } from './context/LoadingContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { setLoadingCallback, setLogoutCallback } from './api/client';
+import { toast } from './utils/toast';
 import ErrorBoundary from './components/ErrorBoundary';
 import Navbar from './components/Navbar';
 import AnnouncementBanner from './components/AnnouncementBanner';
@@ -32,12 +33,31 @@ const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 const AddressBook = lazy(() => import('./pages/AddressBook'));
 const Settings = lazy(() => import('./pages/Settings'));
 const AccountRecovery = lazy(() => import('./pages/Settings').then(m => ({ default: m.AccountRecovery })));
+const NotFound = lazy(() => import('./pages/NotFound'));
 
 function PrivateRoute({ children, role }) {
   const { user, loading } = useAuth();
-  if (loading) return null;
-  if (!user) return <Navigate to="/login" />;
-  if (role && user.role !== role) return <Navigate to="/" />;
+  const { t } = useTranslation();
+  const location = useLocation();
+
+  if (loading) return <PageLoader />;
+  
+  if (!user) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+  
+  if (role && user.role !== role) {
+    const roleMessages = {
+      farmer: t('privateRoute.farmerOnly'),
+      buyer: t('privateRoute.buyerOnly'),
+      admin: t('privateRoute.adminOnly'),
+    };
+    if (roleMessages[role]) {
+      toast(roleMessages[role], { type: 'warning' });
+    }
+    return <Navigate to="/" replace />;
+  }
+  
   return children;
 }
 
@@ -108,6 +128,7 @@ function AppContent() {
             <Route path="/addresses" element={<PrivateRoute role="buyer"><AddressBook /></PrivateRoute>} />
             <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
             <Route path="/recover" element={<AccountRecovery />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
       </main>

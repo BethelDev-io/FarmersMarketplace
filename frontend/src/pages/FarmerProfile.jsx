@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
+import NotFound from './NotFound';
 
 const PAGE_SIZE = 9;
 
@@ -308,17 +309,7 @@ export default function FarmerProfile() {
 
   if (loading) return <ProfileSkeleton />;
 
-  if (notFound) {
-    return (
-      <div style={{ ...s.page, textAlign: 'center', paddingTop: 60 }}>
-        <div style={{ fontSize: 48, marginBottom: 12 }}>🌾</div>
-        <div style={{ fontSize: 18, color: '#888' }}>Farmer not found.</div>
-        <button style={{ marginTop: 16, ...s.back }} onClick={() => navigate('/marketplace')}>
-          ← Back to Marketplace
-        </button>
-      </div>
-    );
-  }
+  if (notFound) return <NotFound />;
 
   return (
     <div style={s.page}>

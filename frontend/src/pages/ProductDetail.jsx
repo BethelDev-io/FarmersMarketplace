@@ -48,6 +48,7 @@ import { useReviewForm } from '../hooks/useReviewForm';
 import { usePaymentLink } from '../hooks/usePaymentLink';
 import { addRecentlyViewed } from '../utils/recentlyViewed';
 import { useNetwork } from '../context/NetworkContext';
+import NotFound from './NotFound';
 
 const s = {
   page: { maxWidth: 640, margin: "40px auto", padding: 16 },
@@ -127,6 +128,7 @@ export default function ProductDetail() {
   const { isFavorited, toggleFavorite } = useFavorites();
   const navigate = useNavigate();
   const [product, setProduct] = useState(null);
+  const [notFound, setNotFound] = useState(false);
   const [reviews, setReviews] = useState([]);
   const [qty, setQty] = useState(1);
   const [weight, setWeight] = useState('');
@@ -305,7 +307,7 @@ export default function ProductDetail() {
       setQty(p.min_order_quantity || 1);
       if (p.pricing_model === 'pwyw') setCustomPrice(String(p.min_price));
       else if (p.pricing_model === 'donation') setCustomPrice('1.00');
-    }).catch(() => navigate('/marketplace'));
+    }).catch(() => setNotFound(true));
     api.getProductShareMeta(id).then(res => setShareMeta(res.data ?? null)).catch(() => setShareMeta(null));
     loadReviews();
     api.getProductImages(id).then(res => {
@@ -516,6 +518,8 @@ export default function ProductDetail() {
   }, [auctionData?.auction_end]);
 
   if (!product) return <Spinner />;
+
+  if (notFound) return <NotFound />;
 
   // Clamp activeImg to valid range
   const safeActiveImg = images.length > 0 ? Math.min(activeImg, images.length - 1) : 0;
