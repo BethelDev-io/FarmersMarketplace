@@ -1,5 +1,7 @@
 const router = require('express').Router();
+const db = require('../db/schema');
 const { err } = require('../middleware/error');
+const logger = require('../logger');
 
 let cache = { rate: null, fetchedAt: 0 };
 const CACHE_TTL = 60 * 1000; // 60 seconds
@@ -23,6 +25,17 @@ router.get('/xlm-usd', async (req, res) => {
     if (!rate) throw new Error('Rate not found in response');
 
     cache = { rate, fetchedAt: now };
+
+    // BE-37: Persist rate to database for order fiat snapshots
+    try {
+      await db.query(
+        'INSERT INTO exchange_rates (currency, rate, fetchedAt) VALUES ($1, $2, $3)',
+        ['USD', rate, new Date(now).toISOString()]
+      );
+    } catch (dbErr) {
+      logger.warn('[rates] Failed to persist rate to database', { error: dbErr.message });
+    }
+
     res.json({ success: true, rate, cached: false });
   } catch (e) {
     // Return stale cache if available rather than failing

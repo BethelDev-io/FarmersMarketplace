@@ -599,12 +599,31 @@ router.post('/', auth, requireEmailVerified, orderRateLimit, validate.order, asy
   if (!stockReserved) return err(res, 409, 'Insufficient stock or product no longer available', 'out_of_stock');
   if (reservedRows[0]) broadcastStockUpdate(product_id, reservedRows[0].quantity);
 
+  // BE-37: Capture fiat rate snapshot at order creation
+  let fiatCurrency = null;
+  let fiatRate = null;
+  let fiatTotal = null;
+  try {
+    const { rows: rateRows } = await db.query(
+      'SELECT rate, fetchedAt FROM exchange_rates WHERE currency = $1 ORDER BY fetchedAt DESC LIMIT 1',
+      ['USD']
+    );
+    if (rateRows[0] && (Date.now() - new Date(rateRows[0].fetchedAt).getTime() <= 5 * 60 * 1000)) {
+      fiatCurrency = 'USD';
+      fiatRate = parseFloat(rateRows[0].rate);
+      fiatTotal = parseFloat((totalPrice * fiatRate).toFixed(2));
+    }
+  } catch (rateErr) {
+    // Non-fatal: order proceeds even if fiat snapshot fails
+    logger.warn('[orders] Failed to capture fiat rate snapshot', { error: rateErr.message });
+  }
+
   let orderRows;
   try {
     ({ rows: orderRows } = await db.query(
-      `INSERT INTO orders (buyer_id, product_id, quantity, total_price, custom_price, status, address_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-      [req.user.id, product_id, quantity, totalPrice, custom_price || null, 'pending', address_id || null]
+      `INSERT INTO orders (buyer_id, product_id, quantity, total_price, custom_price, status, address_id, fiat_currency, fiat_rate, fiat_total)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+      [req.user.id, product_id, quantity, totalPrice, custom_price || null, 'pending', address_id || null, fiatCurrency, fiatRate, fiatTotal]
     ));
   } catch (error) {
     try {
