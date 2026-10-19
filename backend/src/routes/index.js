@@ -262,7 +262,8 @@ async function getHealthCheckResponse(includeVersion = false, requestId) {
 const API_V0_SUNSET = process.env.API_V0_SUNSET || '2027-03-31';
 
 /**
- * Add deprecation warn
+ * Add deprecation warning headers to a response.
+ */
 function addDeprecationHeaders(req, res, next) {
   res.setHeader('Deprecation', 'true');
   res.setHeader('Sunset', new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toUTCString()); // 6 months
@@ -327,9 +328,19 @@ router.use('/api/v1/wallet/send', sendLimiter);
 function registerRoute(basePrefix, path, handler) {
   // Register /api version with deprecation headers
   router.use(`/api${path}`, addDeprecationHeaders, handler);
-  
+
   // Register /api/v1 version
   router.use(`/api/v1${path}`, handler);
+}
+
+/**
+ * Register a deprecated alias path for both /api and /api/v1 versions.
+ * Unlike registerRoute, both versions get deprecation headers since the
+ * path itself (not just the unversioned prefix) is deprecated.
+ */
+function registerDeprecatedAlias(path, handler) {
+  router.use(`/api${path}`, addDeprecationHeaders, handler);
+  router.use(`/api/v1${path}`, addDeprecationHeaders, handler);
 }
 
 // ============================================================================
@@ -354,7 +365,6 @@ router.use('/federation', require('./federation'));
 registerRoute('/', '/auth', require('./auth'));
 // Fixed /products paths must precede products.js, whose /:id handlers would swallow them (#1368)
 registerRoute('/', '/products', require('./productExtras'));
-registerRoute('/', '', require('./export'));
 registerRoute('/', '/products/bulk', require('./bulkUpload'));
 registerRoute('/', '/products/import', require('./productImport'));
 registerRoute('/', '/products', require('./productVideos'));
@@ -365,8 +375,6 @@ registerRoute('/', '/products/market', require('./market'));
 registerRoute('/', '/auth', require('./emailVerification'));
 registerRoute('/', '/auth', require('./authPasswordReset'));
 registerRoute('/', '/products', require('./products'));
-registerRoute('/', '/products', require('./flashSales'));
-registerRoute('/', '/products', require('./productShare'));
 registerRoute('/', '/orders', require('./orderBudgetGuard'));
 registerRoute('/', '/orders', require('./orders'));
 registerRoute('/', '/orders/:id/return', require('./returns'));
@@ -391,25 +399,19 @@ registerRoute('/', '/notifications', require('./notifications'));
 registerRoute('/', '/contracts', require('./contracts'));
 registerRoute('/', '/escrow', require('./escrow'));
 registerRoute('/', '/creator-earnings', require('./creatorEarnings'));
-registerRoute('/', '/paymentStreams', require('./paymentStreams'));
-registerRoute('/', '/streams', require('./streams'));
-registerRoute('/', '/products/bulk', require('./bulkUpload'));
+// /payment-streams is the canonical kebab-case prefix for the payment-streaming
+// feature; /paymentStreams and /streams are kept working as deprecated aliases.
+registerRoute('/', '/payment-streams', require('./streams'));
+registerDeprecatedAlias('/streams', require('./streams'));
+registerDeprecatedAlias('/paymentStreams', require('./paymentStreams'));
 registerRoute('/', '/coupons', require('./coupons'));
 registerRoute('/', '/alerts', require('./alerts'));
-registerRoute('/', '', require('./reviews'));
-registerRoute('/', '/products/import', require('./productImport'));
 const reviewRoutes = require('./reviews');
 registerRoute('/', '/reviews', reviewRoutes);
 registerRoute('/', '/admin/reviews', reviewRoutes.adminRouter);
 registerRoute('/', '/products', reviewRoutes.productRouter);
 registerRoute('/', '/network', require('./network'));
 registerRoute('/', '/batches', require('./batches'));
-registerRoute('/', '/products', require('./productVideos'));
-registerRoute('/', '/products/:id/calendar', require('./calendar'));
-registerRoute('/', '/calendar', require('./calendar'));
-registerRoute('/', '/wallet', require('./walletBudget'));
-registerRoute('/', '/products/market', require('./market'));
-registerRoute('/', '/calendar', require('./calendar'));
 registerRoute('/', '/wallet', require('./walletBudget'));
 registerRoute('/', '/market', require('./market'));
 registerRoute('/', '/subscriptions', require('./subscriptions').router);
@@ -420,8 +422,7 @@ registerRoute('/', '/products', exportRoutes.productsRouter);
 registerRoute('/', '/orders', exportRoutes.ordersRouter);
 registerRoute('/', '/announcements', require('./announcements'));
 registerRoute('/', '/auctions', require('./auctions'));
-registerRoute('/', '/disputes', require('./disputes'));
 
 registerRoute('/', '/categories', require('./categories'));
 
-/* … truncated 6657 chars — edit only what you need near the top … */
+module.exports = router;
