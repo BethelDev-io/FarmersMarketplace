@@ -1,6 +1,8 @@
 'use strict';
 
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
+const { jwtSecret: JWT_SECRET } = require('../config');
 const User = require('../models/User');
 
 // Single-use stream tickets. A ticket is an opaque random ID bound to a user and
@@ -88,6 +90,11 @@ async function sseAuth(req, res, next) {
 
   if (!ticket) {
     return res.status(401).json({ error: 'Missing stream ticket' });
+  let payload;
+  try {
+    payload = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid or expired stream token' });
   }
 
   const userId = consumeStreamTicket(String(ticket));

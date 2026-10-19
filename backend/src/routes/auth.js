@@ -92,7 +92,10 @@ const COOKIE_OPTIONS = {
 };
 
 function signAccessToken(payload) {
-  return jwt.sign(payload, getJwtSecret(), { expiresIn: ACCESS_TOKEN_TTL });
+  return jwt.sign({ ...payload, typ: 'access' }, getJwtSecret(), {
+    algorithm: 'HS256',
+    expiresIn: ACCESS_TOKEN_TTL,
+  });
 }
 
 function getJwtSecret() {
@@ -427,7 +430,7 @@ router.get('/stream-token', auth, (req, res) => {
   const token = jwt.sign(
     { id: req.user.id, scope: 'stream' },
     getJwtSecret(),
-    { expiresIn: '60s' }
+    { algorithm: 'HS256', expiresIn: '60s' }
   );
   res.json({ token, expiresIn: 60 });
 });
