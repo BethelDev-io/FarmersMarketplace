@@ -104,6 +104,13 @@ const JOBS = [
     run: () => require('./contractMonitor').runMonitoringJob(),
   },
   {
+    name: 'escrow-reconciliation',
+    intervalMs: parseInt(process.env.ESCROW_RECONCILE_INTERVAL_MS || String(15 * MINUTE), 10),
+    runOnStart: true,
+    enabled: () => !!config.sorobanEscrowContractId,
+    run: () => require('./reconcileEscrow').reconcileEscrow(),
+  },
+  {
     name: 'contract-registry-sync',
     intervalMs: parseInt(process.env.REGISTRY_SYNC_INTERVAL_MS || '300000', 10),
     runOnStart: true,
