@@ -207,6 +207,9 @@ async function request(path, options = {}, retry = true, csrfRetry = true) {
       const err = new Error(data.message || data.error || 'Request failed');
       err.code = data.code;
       err.status = res.status;
+      if (data.details) err.details = data.details;
+      const reset = res.headers?.get?.('RateLimit-Reset') || res.headers?.get?.('Retry-After');
+      if (reset != null && !Number.isNaN(Number(reset))) err.retryAfter = Number(reset);
       throw err;
     }
     return data;
@@ -249,6 +252,7 @@ export const api = {
 
   getProducts: (filters = {}) => request(`/products${toQs(filters)}`),
   getCategories: () => request('/products/categories'),
+  getCategoryList: () => request('/categories'),
   getProduct: (id, options) => request(`/products/${id}`, options),
   createProduct: (body) => request('/products', { method: 'POST', body }),
   getMyProducts: () => request('/products/mine/list'),
@@ -494,7 +498,9 @@ export const api = {
     request(`/contracts/${contractId}/simulate`, { method: 'POST', body: { method, args } }),
   getBudget: () => request('/wallet/budget'),
   setBudget: (monthly_budget) => request('/wallet/budget', { method: 'PATCH', body: { monthly_budget } }),
-  withdrawFunds: (destination, amount) => request('/wallet/withdraw', { method: 'POST', body: { destination, amount } }),
+  withdrawFunds: (destination, amount, extra = {}) =>
+    request('/wallet/withdraw', { method: 'POST', body: { destination, amount, ...extra } }),
+  checkAccountExists: (address) => request(`/wallet/account-exists?address=${encodeURIComponent(address)}`),
   getContractEvents: (contractId, params = {}) => request(`/contracts/${contractId}/events${toQs(params)}`),
 
   // Subscriptions
@@ -511,7 +517,9 @@ export const api = {
   importProductsPreview: (products) => request('/products/import', { method: 'POST', body: { products } }),
   importProductsConfirm: (products) => request('/products/import/confirm', { method: 'POST', body: { products } }),
   // Seed phrase backup & recovery
-  getSeedPhrase: (password) => request('/auth/seed-phrase', { method: 'POST', body: { password } }),
+  getSeedPhrase: (password, totp) =>
+    request('/auth/seed-phrase', { method: 'POST', body: totp ? { password, totp } : { password } }),
+  resolveFederation: (address) => request(`/wallet/resolve-federation?address=${encodeURIComponent(address)}`),
   recoverAccount: (body) => request('/auth/recover', { method: 'POST', body }),
   // Availability calendar
   getCalendar: (productId) => request(`/products/${productId}/calendar`),

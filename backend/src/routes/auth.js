@@ -568,6 +568,24 @@ router.post('/seed-phrase', auth, validate.confirmPassword, async (req, res) => 
   const valid = await bcrypt.compare(password, user.password);
   if (!valid) return err(res, 401, 'Incorrect password', 'invalid_credentials');
 
+  // Revealing the seed phrase also requires a TOTP code when 2FA is enabled.
+  const { rows: tfaRows } = await db.query(
+    'SELECT totp_secret, enabled FROM user_2fa_settings WHERE user_id = $1',
+    [req.user.id]
+  );
+  const tfa = tfaRows[0];
+  if (tfa && tfa.enabled === 1) {
+    const code = String(req.body.totp || '').trim();
+    if (!code) return err(res, 401, 'Two-factor code required', 'totp_required');
+    const ok = speakeasy.totp.verify({
+      secret: tfa.totp_secret,
+      encoding: 'base32',
+      token: code,
+      window: 1,
+    });
+    if (!ok) return err(res, 401, 'Invalid two-factor code', 'invalid_code');
+  }
+
   if (!user.stellar_mnemonic) {
     return err(
       res,
