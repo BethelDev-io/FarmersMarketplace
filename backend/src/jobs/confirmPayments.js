@@ -4,7 +4,6 @@ const logger = require('../logger');
 const { sendLowStockAlert } = require('../utils/mailer');
 const { broadcastStockUpdate } = require('../utils/stockUpdates');
 
-// Orders sit in 'confirming' for at most TIMEOUT_MS, so poll well inside that window.
 const POLL_INTERVAL_MS = parseInt(process.env.CONFIRM_PAYMENTS_INTERVAL_MS || '15000', 10);
 const TIMEOUT_MS = 60000;
 const PAYMENT_EXPIRY_MS = 30 * 60 * 1000;

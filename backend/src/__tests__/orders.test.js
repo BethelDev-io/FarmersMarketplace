@@ -48,13 +48,11 @@ beforeEach(() => {
 });
 
 const SECRET = process.env.JWT_SECRET;
-const buyerToken = jwt.sign({ id: 2, role: 'buyer' }, SECRET);
 const verifiedBuyerToken = jwt.sign({
   id: 2,
   role: 'buyer',
   email_verified_at: new Date().toISOString(),
 }, SECRET);
-const farmerToken = jwt.sign({ id: 1, role: 'farmer' }, SECRET);
 const buyerToken = jwt.sign({ id: 2, role: 'buyer', email_verified_at: new Date().toISOString() }, SECRET);
 const farmerToken = jwt.sign({ id: 1, role: 'farmer', email_verified_at: new Date().toISOString() }, SECRET);
 const VALID_UUID = '550e8400-e29b-41d4-a716-446655440000';
@@ -259,6 +257,8 @@ describe('POST /api/orders', () => {
     expect(eligibilityQuery[1]).toEqual([2, 1, 10]);
     const insertQuery = mockDb.query.mock.calls.find(([sql]) => sql.includes('INSERT INTO orders'));
     expect(insertQuery[1][3]).toBe(4.5);
+  });
+
   describe('PATCH /api/orders/:id/status', () => {
     const order = {
       id: 42,
