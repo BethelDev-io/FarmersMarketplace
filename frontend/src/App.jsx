@@ -1,6 +1,5 @@
-import React, { lazy, Suspense, useEffect, useContext } from 'react';
+import React, { lazy, Suspense, useEffect, useContext, useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { HelmetProvider } from 'react-helmet-async';
 import { useTranslation } from 'react-i18next';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { FavoritesProvider } from './context/FavoritesContext';
@@ -10,17 +9,23 @@ import { LoadingProvider, LoadingContext } from './context/LoadingContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { setLoadingCallback, setLogoutCallback } from './api/client';
 import { toast } from './utils/toast';
+import { setLoadingCallback, setLogoutCallback, setEmailNotVerifiedCallback } from './api/client';
 import ErrorBoundary from './components/ErrorBoundary';
 import Navbar from './components/Navbar';
 import AnnouncementBanner from './components/AnnouncementBanner';
+import EmailVerificationBanner from './components/EmailVerificationBanner';
 import LoadingSpinner from './components/LoadingSpinner';
 import PageLoader from './components/PageLoader';
 import UpdatePrompt from './components/UpdatePrompt';
 import { initSentry } from './utils/sentry';
 import { getLocaleDirection } from './i18n';
+import { showToast } from './utils/toast';
 
 const LoginPage = lazy(() => import('./pages/Auth').then(m => ({ default: m.LoginPage })));
 const RegisterPage = lazy(() => import('./pages/Auth').then(m => ({ default: m.RegisterPage })));
+const ForgotPasswordPage = lazy(() => import('./pages/PasswordReset').then(m => ({ default: m.ForgotPasswordPage })));
+const ResetPasswordPage = lazy(() => import('./pages/PasswordReset').then(m => ({ default: m.ResetPasswordPage })));
+const VerifyEmailPage = lazy(() => import('./pages/VerifyEmail').then(m => ({ default: m.VerifyEmailPage })));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Marketplace = lazy(() => import('./pages/Marketplace'));
 const Compare = lazy(() => import('./pages/Compare'));
@@ -58,12 +63,26 @@ function PrivateRoute({ children, role }) {
     return <Navigate to="/" replace />;
   }
   
+
+function RoleMismatch({ role }) {
+  useEffect(() => {
+    showToast(`This page is for ${role}s only`, 'error');
+  }, [role]);
+  return <Navigate to="/" replace />;
+}
+
+function PrivateRoute({ children, role }) {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+  if (loading) return <PageLoader />;
+  if (!user) return <Navigate to="/login" replace state={{ from: location }} />;
+  if (role && user.role !== role) return <RoleMismatch role={role} />;
   return children;
 }
 
 function Home() {
   const { user, loading } = useAuth();
-  if (loading) return null;
+  if (loading) return <PageLoader />;
   if (!user) return <Navigate to="/login" />;
   if (user.role === 'admin') return <Navigate to="/admin" />;
   return <Navigate to={user.role === 'farmer' ? '/dashboard' : '/marketplace'} />;
@@ -71,13 +90,15 @@ function Home() {
 
 function AppContent() {
   const { startLoading, stopLoading } = useContext(LoadingContext);
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const location = useLocation();
   const { i18n } = useTranslation();
+  const [showVerifyBanner, setShowVerifyBanner] = useState(false);
 
   useEffect(() => {
     setLoadingCallback((isStart) => isStart ? startLoading() : stopLoading());
     setLogoutCallback(logout);
+    setEmailNotVerifiedCallback(() => setShowVerifyBanner(true));
   }, [startLoading, stopLoading, logout]);
 
   // Keep document dir/lang in sync with the active i18n language
@@ -107,6 +128,7 @@ function AppContent() {
         Skip to main content
       </a>
       <AnnouncementBanner />
+      {showVerifyBanner && <EmailVerificationBanner email={user?.email} onDismiss={() => setShowVerifyBanner(false)} />}
       <Navbar />
       <LoadingSpinner />
       <UpdatePrompt />
@@ -116,6 +138,9 @@ function AppContent() {
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/compare" element={<Compare />} />
             <Route path="/product/:id" element={<ProductDetail />} />
@@ -142,19 +167,8 @@ export default function App() {
   }, []);
 
   return (
-    <HelmetProvider>
-      <ErrorBoundary>
-        <ThemeProvider>
-          <AuthProvider>
-            <FavoritesProvider>
-              <CompareProvider>
-                <LoadingProvider>
-                  <AppContent />
-                </LoadingProvider>
-              </CompareProvider>
-            </FavoritesProvider>
-          </AuthProvider>
-        </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
         <AuthProvider>
           <FavoritesProvider>
             <CompareProvider>
@@ -166,7 +180,7 @@ export default function App() {
             </CompareProvider>
           </FavoritesProvider>
         </AuthProvider>
-      </ErrorBoundary>
-    </HelmetProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }

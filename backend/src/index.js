@@ -5,69 +5,26 @@ const app = require('./app');
 const db = require('./db/schema');
 const logger = require('./logger');
 const { startJobs } = require('./jobs');
-const cron = require('node-cron');
-const { startSubscriptionJob } = require('./jobs/processSubscriptions');
-const { startFailedEmailCleanupJob } = require('./jobs/cleanupFailedEmails');
-const { startProductViewsAggJob } = require('./jobs/aggregateProductViews');
-const { startFreshnessJob } = require('./jobs/processFreshnessAlerts');
-const { startContractMonitor } = require('./jobs/contractMonitor');
-const { startContractRegistrySync } = require('./jobs/contractRegistrySync');
-const { startCreatorEarningsMonitor } = require('./jobs/creatorEarningsMonitor');
-const { startPushSubscriptionCleanup } = require('./jobs/cleanupPushSubscriptions');
-const { startExpiryJob } = require('./jobs/deactivateExpiredProducts');
-const { startAnonymizeJob } = require('./jobs/anonymizeDeactivatedUsers');
-const { startAuctionJob } = require('./jobs/auctionCron');
-const { start: startPaymentConfirmationJob } = require('./jobs/confirmPayments');
-const { createBackup } = require('./scripts/backup');
 const PORT = process.env.PORT || 4000;
 
-app.listen(PORT, () => {
-  logger.info(`Backend running on http://localhost:${PORT}`);
-  // Background jobs run only in the process started with RUN_JOBS=true (#1367).
-  startJobs();
-  startSubscriptionJob();
-  startFailedEmailCleanupJob();
-  startProductViewsAggJob();
-  startFreshnessJob();
-  startContractMonitor();
-  startContractRegistrySync();
-  startCreatorEarningsMonitor();
-  startPushSubscriptionCleanup();
-  startAnonymizeJob();
-  startExpiryJob();
-  startAuctionJob();
-  startPaymentConfirmationJob();
 async function start() {
   await db.ready;
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     logger.info(`Backend running on http://localhost:${PORT}`);
+    // Background jobs run only in the process started with RUN_JOBS=true (#1367).
+    const stopJobs = startJobs();
     app.locals.startBackgroundJobs();
-    startSubscriptionJob();
-    startFailedEmailCleanupJob();
-    startProductViewsAggJob();
-    startFreshnessJob();
-    startContractMonitor();
-    startContractRegistrySync();
-    startCreatorEarningsMonitor();
-    startPushSubscriptionCleanup();
-    startAnonymizeJob();
-    startExpiryJob();
-    startAuctionJob();
 
-    cron.schedule('0 0 * * *', async () => {
-      logger.info('Starting scheduled daily backup');
-      try {
-        await createBackup();
-        logger.info('Daily backup completed successfully');
-      } catch (error) {
-        logger.error('Daily backup failed:', { error: error.message });
-      }
-    }, {
-      scheduled: true,
-      timezone: 'UTC'
-    });
-
-    logger.info('Daily backup cron job scheduled at midnight UTC');
+    const shutdown = (signal) => {
+      logger.info(`${signal} received, shutting down gracefully`);
+      stopJobs();
+      server.close(() => {
+        logger.info('HTTP server closed');
+        process.exit(0);
+      });
+    };
+    process.once('SIGTERM', () => shutdown('SIGTERM'));
+    process.once('SIGINT', () => shutdown('SIGINT'));
   });
 }
 

@@ -15,6 +15,7 @@ import Spinner from '../components/Spinner';
 import FlashSaleCountdown from '../components/FlashSaleCountdown';
 import ShareButtons from '../components/ShareButtons';
 import PriceHistoryChart from '../components/PriceHistoryChart';
+import NotFound from './NotFound';
 import { Helmet } from 'react-helmet-async';
 import { useTranslation } from 'react-i18next';
 
@@ -301,6 +302,7 @@ export default function ProductDetail() {
    const { paymentLinkData, paymentLinkLoading, paymentLinkError, generatePaymentLink, setPaymentLinkError } = usePaymentLink();
 
    useEffect(() => {
+    setNotFound(false);
     api.getProduct(id).then(res => {
       const p = res.data ?? res;
       setProduct(p);
@@ -308,6 +310,10 @@ export default function ProductDetail() {
       if (p.pricing_model === 'pwyw') setCustomPrice(String(p.min_price));
       else if (p.pricing_model === 'donation') setCustomPrice('1.00');
     }).catch(() => setNotFound(true));
+    }).catch(err => {
+      if (err.status === 404) setNotFound(true);
+      else navigate('/marketplace');
+    });
     api.getProductShareMeta(id).then(res => setShareMeta(res.data ?? null)).catch(() => setShareMeta(null));
     loadReviews();
     api.getProductImages(id).then(res => {
@@ -517,6 +523,7 @@ export default function ProductDetail() {
     return () => clearInterval(timer);
   }, [auctionData?.auction_end]);
 
+  if (notFound) return <NotFound />;
   if (!product) return <Spinner />;
 
   if (notFound) return <NotFound />;

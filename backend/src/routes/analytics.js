@@ -12,8 +12,11 @@ router.get('/farmer', async (req, res) => {
   if (req.user.role !== 'farmer') return err(res, 403, 'Farmers only', 'forbidden');
   const farmerId = req.user.id;
 
+  // BE-37: Include fiat revenue aggregation
   const { rows: totalsRows } = await db.query(
-    `SELECT COUNT(*) as order_count, COALESCE(SUM(o.total_price), 0) as total_revenue
+    `SELECT COUNT(*) as order_count, 
+            COALESCE(SUM(o.total_price), 0) as total_revenue,
+            COALESCE(SUM(o.fiat_total), 0) as total_revenue_usd
      FROM orders o JOIN products p ON o.product_id = p.id
      WHERE p.farmer_id = $1 AND o.status = 'paid'`,
     [farmerId]
@@ -28,7 +31,9 @@ router.get('/farmer', async (req, res) => {
   );
 
   const monthlyQuery = `SELECT ${monthBucket('o.created_at', db.isPostgres)} as month,
-          COALESCE(SUM(o.total_price), 0) as revenue, COUNT(*) as orders
+          COALESCE(SUM(o.total_price), 0) as revenue,
+          COALESCE(SUM(o.fiat_total), 0) as revenue_usd,
+          COUNT(*) as orders
    FROM orders o JOIN products p ON o.product_id = p.id
    WHERE p.farmer_id = $1 AND o.status = 'paid'
      AND o.created_at >= ${sixMonthsAgo(db.isPostgres)}
@@ -40,6 +45,7 @@ router.get('/farmer', async (req, res) => {
     success: true,
     data: {
       total_revenue: totalsRows[0].total_revenue,
+      total_revenue_usd: parseFloat(totalsRows[0].total_revenue_usd) || null,
       order_count: totalsRows[0].order_count,
       top_products: topProducts,
       monthly,

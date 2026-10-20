@@ -333,6 +333,21 @@ export default function FarmerProfile() {
               ))}
             </div>
           )}
+          {cooperatives.length > 0 && (
+            <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {cooperatives.map(coop => (
+                <button
+                  key={coop.id}
+                  style={s.coopBadgeInner}
+                  onClick={() => setSelectedCoop(coop)}
+                  aria-label={`Member of cooperative: ${coop.name}. Click for details.`}
+                  title={`Cooperative: ${coop.name}${coop.description ? ' — ' + coop.description : ''}`}
+                >
+                  🤝 Member of: {coop.name}
+                </button>
+              ))}
+            </div>
+          )}
           {farmer.location && <div style={s.location}>📍 {farmer.location}</div>}
           {farmer.bio
             ? <div style={s.bio}>{farmer.bio}</div>
@@ -349,28 +364,7 @@ export default function FarmerProfile() {
 
       {showStreamModal && (
         <StreamModal farmerId={farmer.id} onClose={() => setShowStreamModal(false)} />
-          {farmer.verified && (
-            <div style={s.verifiedBadge}>✔ Verified Farmer</div>
-          )}
-
-          {/* Cooperative membership badges */}
-          {cooperatives.length > 0 && (
-            <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-              {cooperatives.map(coop => (
-                <button
-                  key={coop.id}
-                  style={s.coopBadgeInner}
-                  onClick={() => setSelectedCoop(coop)}
-                  aria-label={`Member of cooperative: ${coop.name}. Click for details.`}
-                  title={`Cooperative: ${coop.name}${coop.description ? ' — ' + coop.description : ''}`}
-                >
-                  🤝 Member of: {coop.name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* Cooperative detail modal */}
       {selectedCoop && (
