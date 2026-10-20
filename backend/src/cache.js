@@ -72,6 +72,32 @@ async function del(...keys) {
   }
 }
 
+async function acquireLock(key, owner, ttlMs) {
+  if (!isReady()) return null;
+  try {
+    return (await client.set(key, owner, 'PX', ttlMs, 'NX')) === 'OK';
+  } catch (err) {
+    logCacheError('lock acquire error', err);
+    return false;
+  }
+}
+
+async function releaseLock(key, owner) {
+  if (!isReady()) return null;
+  try {
+    const result = await client.eval(
+      "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+      1,
+      key,
+      owner
+    );
+    return result === 1;
+  } catch (err) {
+    logCacheError('lock release error', err);
+    return false;
+  }
+}
+
 async function delByPattern(pattern) {
   if (!isReady()) return;
   try {
@@ -94,4 +120,4 @@ async function invalidateProducts() {
   await delByPattern('products:*');
 }
 
-module.exports = { get, set, del, delByPattern, invalidateProducts };
+module.exports = { get, set, del, delByPattern, acquireLock, releaseLock, invalidateProducts };

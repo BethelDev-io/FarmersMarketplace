@@ -368,6 +368,7 @@ registerRoute('/', '/products', require('./products'));
 registerRoute('/', '/products', require('./flashSales'));
 registerRoute('/', '/products', require('./productShare'));
 registerRoute('/', '/orders', require('./orderBudgetGuard'));
+registerRoute('/', '/orders', require('./orderReceipt'));
 registerRoute('/', '/orders', require('./orders'));
 registerRoute('/', '/orders/:id/return', require('./returns'));
 registerRoute('/', '/disputes', require('./disputes'));
