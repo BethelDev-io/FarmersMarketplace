@@ -1,16 +1,82 @@
 const router = require('express').Router();
+const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
+const { ipKeyGenerator } = require('express-rate-limit');
 const logger = require('../logger');
 const db = require('../db/schema');
 const StellarSdk = require('@stellar/stellar-sdk');
 
 // ============================================================================
+// Rate Limiter Stores
+// ============================================================================
+
+// Shared counters so limits hold across cluster workers and restarts (#1457).
+// Without REDIS_URL each process keeps its own MemoryStore (express-rate-limit default).
+const rateLimitRedis = process.env.REDIS_URL
+  ? new (require('ioredis'))(process.env.REDIS_URL, { enableOfflineQueue: false })
+  : null;
+
+if (rateLimitRedis) {
+  rateLimitRedis.on('error', (error) => logger.error('Rate limit Redis error:', { error: error.message }));
+} else if (process.env.NODE_ENV === 'production') {
+  logger.warn('REDIS_URL is not set: rate limits use in-memory stores that reset on restart and are not shared across cluster workers');
+}
+
+// Fixed window: INCR and set the TTL on first hit, atomically in one script
+const INCR_WITH_TTL_SCRIPT = `
+local hits = redis.call('INCR', KEYS[1])
+if hits == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end
+return { hits, redis.call('PTTL', KEYS[1]) }
+`;
+
+class RedisRateLimitStore {
+  constructor(client, prefix, windowMs) {
+    this.client = client;
+    this.prefix = prefix;
+    this.windowMs = windowMs;
+  }
+
+  async increment(key) {
+    const [totalHits, ttl] = await this.client.eval(INCR_WITH_TTL_SCRIPT, 1, `${this.prefix}${key}`, this.windowMs);
+    return { totalHits, resetTime: new Date(Date.now() + ttl) };
+  }
+
+  async decrement(key) {
+    await this.client.decr(`${this.prefix}${key}`);
+  }
+
+  async resetKey(key) {
+    await this.client.del(`${this.prefix}${key}`);
+  }
+}
+
+function redisStoreOptions(name, windowMs) {
+  return rateLimitRedis
+    ? { store: new RedisRateLimitStore(rateLimitRedis, `rl:${name}:`, windowMs) }
+    : {};
+}
+
+// ============================================================================
 // Rate Limiters
 // ============================================================================
+
+// Login is keyed on ip + email so one account can't be attacked from many IPs.
+// Register, refresh and other auth paths stay keyed on ip alone.
+function authRateLimitKey(req) {
+  const ip = ipKeyGenerator(req.ip);
+  const email = req.body?.email;
+  if (!req.originalUrl.split('?')[0].endsWith('/auth/login') || typeof email !== 'string') {
+    return ip;
+  }
+  const emailHash = crypto.createHash('sha256').update(email.trim().toLowerCase()).digest('hex');
+  return `${ip}:${emailHash}`;
+}
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: parseInt(process.env.RATE_LIMIT_AUTH_MAX || '10'),
+  keyGenerator: authRateLimitKey,
+  ...redisStoreOptions('auth', 15 * 60 * 1000),
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -23,6 +89,7 @@ const authLimiter = rateLimit({
 const generalLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: parseInt(process.env.RATE_LIMIT_GENERAL_MAX || '100'),
+  ...redisStoreOptions('general', 60 * 1000),
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -35,6 +102,7 @@ const generalLimiter = rateLimit({
 const orderLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: parseInt(process.env.RATE_LIMIT_ORDER_MAX || '10'),
+  ...redisStoreOptions('order', 60 * 1000),
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -47,6 +115,7 @@ const orderLimiter = rateLimit({
 const fundLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 5,
+  ...redisStoreOptions('fund', 60 * 60 * 1000),
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -59,6 +128,7 @@ const fundLimiter = rateLimit({
 const sendLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: parseInt(process.env.RATE_LIMIT_SEND_MAX || '5'),
+  ...redisStoreOptions('send', 60 * 1000),
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -262,7 +332,8 @@ async function getHealthCheckResponse(includeVersion = false, requestId) {
 const API_V0_SUNSET = process.env.API_V0_SUNSET || '2027-03-31';
 
 /**
- * Add deprecation warn
+ * Add deprecation warning headers to a response.
+ */
 function addDeprecationHeaders(req, res, next) {
   res.setHeader('Deprecation', 'true');
   res.setHeader('Sunset', new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toUTCString()); // 6 months
@@ -327,9 +398,19 @@ router.use('/api/v1/wallet/send', sendLimiter);
 function registerRoute(basePrefix, path, handler) {
   // Register /api version with deprecation headers
   router.use(`/api${path}`, addDeprecationHeaders, handler);
-  
+
   // Register /api/v1 version
   router.use(`/api/v1${path}`, handler);
+}
+
+/**
+ * Register a deprecated alias path for both /api and /api/v1 versions.
+ * Unlike registerRoute, both versions get deprecation headers since the
+ * path itself (not just the unversioned prefix) is deprecated.
+ */
+function registerDeprecatedAlias(path, handler) {
+  router.use(`/api${path}`, addDeprecationHeaders, handler);
+  router.use(`/api/v1${path}`, addDeprecationHeaders, handler);
 }
 
 // ============================================================================
@@ -354,7 +435,6 @@ router.use('/federation', require('./federation'));
 registerRoute('/', '/auth', require('./auth'));
 // Fixed /products paths must precede products.js, whose /:id handlers would swallow them (#1368)
 registerRoute('/', '/products', require('./productExtras'));
-registerRoute('/', '', require('./export'));
 registerRoute('/', '/products/bulk', require('./bulkUpload'));
 registerRoute('/', '/products/import', require('./productImport'));
 registerRoute('/', '/products', require('./productVideos'));
@@ -365,8 +445,6 @@ registerRoute('/', '/products/market', require('./market'));
 registerRoute('/', '/auth', require('./emailVerification'));
 registerRoute('/', '/auth', require('./authPasswordReset'));
 registerRoute('/', '/products', require('./products'));
-registerRoute('/', '/products', require('./flashSales'));
-registerRoute('/', '/products', require('./productShare'));
 registerRoute('/', '/orders', require('./orderBudgetGuard'));
 registerRoute('/', '/orders', require('./orders'));
 registerRoute('/', '/orders/:id/return', require('./returns'));
@@ -391,25 +469,19 @@ registerRoute('/', '/notifications', require('./notifications'));
 registerRoute('/', '/contracts', require('./contracts'));
 registerRoute('/', '/escrow', require('./escrow'));
 registerRoute('/', '/creator-earnings', require('./creatorEarnings'));
-registerRoute('/', '/paymentStreams', require('./paymentStreams'));
-registerRoute('/', '/streams', require('./streams'));
-registerRoute('/', '/products/bulk', require('./bulkUpload'));
+// /payment-streams is the canonical kebab-case prefix for the payment-streaming
+// feature; /paymentStreams and /streams are kept working as deprecated aliases.
+registerRoute('/', '/payment-streams', require('./streams'));
+registerDeprecatedAlias('/streams', require('./streams'));
+registerDeprecatedAlias('/paymentStreams', require('./paymentStreams'));
 registerRoute('/', '/coupons', require('./coupons'));
 registerRoute('/', '/alerts', require('./alerts'));
-registerRoute('/', '', require('./reviews'));
-registerRoute('/', '/products/import', require('./productImport'));
 const reviewRoutes = require('./reviews');
 registerRoute('/', '/reviews', reviewRoutes);
 registerRoute('/', '/admin/reviews', reviewRoutes.adminRouter);
 registerRoute('/', '/products', reviewRoutes.productRouter);
 registerRoute('/', '/network', require('./network'));
 registerRoute('/', '/batches', require('./batches'));
-registerRoute('/', '/products', require('./productVideos'));
-registerRoute('/', '/products/:id/calendar', require('./calendar'));
-registerRoute('/', '/calendar', require('./calendar'));
-registerRoute('/', '/wallet', require('./walletBudget'));
-registerRoute('/', '/products/market', require('./market'));
-registerRoute('/', '/calendar', require('./calendar'));
 registerRoute('/', '/wallet', require('./walletBudget'));
 registerRoute('/', '/market', require('./market'));
 registerRoute('/', '/subscriptions', require('./subscriptions').router);
@@ -420,8 +492,7 @@ registerRoute('/', '/products', exportRoutes.productsRouter);
 registerRoute('/', '/orders', exportRoutes.ordersRouter);
 registerRoute('/', '/announcements', require('./announcements'));
 registerRoute('/', '/auctions', require('./auctions'));
-registerRoute('/', '/disputes', require('./disputes'));
 
 registerRoute('/', '/categories', require('./categories'));
 
-/* … truncated 6657 chars — edit only what you need near the top … */
+module.exports = router;
