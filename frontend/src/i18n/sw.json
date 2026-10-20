@@ -66,6 +66,7 @@
       "resend": "Tuma tena barua pepe ya uthibitisho",
       "resent": "Ikiwa akaunti yako inahitaji uthibitisho, barua pepe mpya imetumwa.",
       "dismiss": "Funga"
+    },
     "mfa": {
       "prompt": "Weka msimbo wenye tarakimu 6 kutoka kwenye programu yako ya uthibitishaji.",
       "backupPrompt": "Weka mojawapo ya misimbo yako ya akiba.",
@@ -300,8 +301,7 @@
     "invalid_code": "Msimbo wa uthibitisho si sahihi.",
     "totp_required": "Weka msimbo wa uthibitishaji wa hatua mbili ili kuendelea.",
     "not_found": "Hatukuweza kupata ulichokuwa ukitafuta."
-  }
-}
+  },
   "notFound": {
     "title": "404 - Ukurasa Haupatikani",
     "body": "Ukurasa unaoutafuta haupo. Huenda umehamishwa au kufutwa.",

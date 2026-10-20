@@ -132,6 +132,7 @@ module.exports = {
     source_asset_issuer: z.string().optional(),
     max_source_amount: z.coerce.number().positive('max_source_amount must be a positive number').optional(),
     bundle_id: z.coerce.number().int().positive('bundle_id must be a positive integer').optional(),
+    reward_tokens: z.coerce.number().int().nonnegative('reward_tokens must be a non-negative integer').optional(),
   }).refine(data => {
     // Either product_id (single product) or bundle_id (bundle) must be provided
     if (!data.product_id && !data.bundle_id) {

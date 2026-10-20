@@ -94,6 +94,7 @@ import { s } from '../components/wallet/walletStyles';
 import WalletToast from '../components/wallet/WalletToast';
 import TestnetDisclaimer from '../components/wallet/TestnetDisclaimer';
 import WalletBalanceCard from '../components/wallet/WalletBalanceCard';
+import RewardTokenCard from '../components/wallet/RewardTokenCard';
 import ClaimableBalances from '../components/wallet/ClaimableBalances';
 import BudgetPanel from '../components/wallet/BudgetPanel';
 import TrustlinePanel from '../components/wallet/TrustlinePanel';
@@ -490,6 +491,7 @@ export default function Wallet() {
 
       {loading && !loadError ? <Spinner /> : (
         <>
+          {user?.role === 'buyer' && <RewardTokenCard />}
           <WalletBalanceCard
             wallet={wallet}
             usd={usd}

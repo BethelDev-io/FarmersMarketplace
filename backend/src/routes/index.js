@@ -407,6 +407,7 @@ registerRoute('/', '/auth', require('./authPasswordReset'));
 registerRoute('/', '/products', require('./products'));
 registerRoute('/', '/orders', require('./orderBudgetGuard'));
 registerRoute('/', '/orders', require('./orders'));
+registerRoute('/', '/rewards', require('./rewards'));
 registerRoute('/', '/orders/:id/return', require('./returns'));
 registerRoute('/', '/disputes', require('./disputes'));
 registerRoute('/', '/waitlist', require('./waitlist'));
