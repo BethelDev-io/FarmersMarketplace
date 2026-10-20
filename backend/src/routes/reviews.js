@@ -76,6 +76,14 @@ router.delete('/:id', auth, async (req, res) => {
     await db.query('SELECT * FROM reviews WHERE id = $1 AND buyer_id = $2', [req.params.id, req.user.id])
   ).rows[0];
   if (!review) return err(res, 404, 'Review not found or not yours', 'not_found');
+router.delete('/:id', auth, async (req, res) => {
+  const { rows } = await db.query('SELECT * FROM reviews WHERE id = $1 AND buyer_id = $2', [
+    req.params.id,
+    req.user.id,
+  ]);
+  const review = rows[0];
+  if (!review) return err(res, 404, 'Review not found or not yours', 'not_found');
+
   await db.query('DELETE FROM reviews WHERE id = $1', [req.params.id]);
   await recalcRating(review.product_id);
   res.json({ success: true, message: 'Review deleted' });
@@ -92,7 +100,6 @@ router.post('/', auth, validate.review, async (req, res) => {
     return err(res, 400, 'Rating must be an integer between 1 and 5', 'validation_error');
   const comment = req.body.comment ? sanitizeText(req.body.comment) : null;
 
-  // Reviews are available once payment has been made, including after fulfillment.
   const { rows: orderRows } = await db.query(
     `SELECT id, product_id FROM orders
      WHERE buyer_id = $1 AND id = $2
@@ -111,6 +118,16 @@ router.post('/', auth, validate.review, async (req, res) => {
     return err(res, 409, 'You have already reviewed this order', 'duplicate_review');
 
   const order = orderRows[0];
+  const order = orderRows[0];
+  if (!order) return err(res, 403, 'Purchase required to review this product', 'purchase_required');
+
+  const { rows: existingReviews } = await db.query(
+    'SELECT id FROM reviews WHERE order_id = $1 LIMIT 1',
+    [order.id]
+  );
+  if (existingReviews[0])
+    return err(res, 409, 'This order has already been reviewed', 'duplicate_review');
+
   const { rows } = await db.query(
     'INSERT INTO reviews (order_id, buyer_id, product_id, rating, comment) VALUES ($1, $2, $3, $4, $5) RETURNING id',
     [order.id, req.user.id, order.product_id, rating, comment]

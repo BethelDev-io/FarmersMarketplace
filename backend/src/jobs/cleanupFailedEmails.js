@@ -14,12 +14,12 @@ async function cleanupFailedEmails(retentionDays = 7) {
 
   logger.info(`[cleanup-failed-emails] Pruning failed emails older than ${retentionDays} days (before ${cutoffIso})`);
 
-  const result = db.prepare(`
+  const result = await db.query(`
     DELETE FROM failed_emails 
-    WHERE created_at < ?
-  `).run(cutoffIso);
+    WHERE created_at < $1
+  `, [cutoffIso]);
 
-  const deletedCount = result.changes;
+  const deletedCount = result.rowCount;
   if (deletedCount > 0) {
     logger.info(`[cleanup-failed-emails] Pruned ${deletedCount} old failed email record(s)`);
   } else {

@@ -58,16 +58,11 @@ router.post('/', auth, upload.single('file'), async (req, res) => {
       return err(res, 400, 'Maximum 500 rows per upload', 'validation_error');
     }
 
-    const insertStmt = db.prepare(
-      'INSERT INTO products (farmer_id, name, description, price, quantity, unit, category) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    );
+    await db.withTransaction(async (tx) => {
+      for (let i = 0; i < records.length; i++) {
+        const row = records[i];
+        const rowNum = i + 2;
 
-    const transaction = db.transaction((rows) => {
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        const rowNum = i + 2; // +2 for 1-indexed and header row
-
-        // Validate required fields
         if (!row.name || row.name.trim() === '') {
           results.skipped++;
           results.errors.push({ row: rowNum, error: 'name is required' });
@@ -88,25 +83,32 @@ router.post('/', auth, upload.single('file'), async (req, res) => {
           continue;
         }
 
+        await tx.query('SAVEPOINT bulk_upload_row');
         try {
-          insertStmt.run(
-            req.user.id,
-            row.name.trim(),
-            sanitizeText(row.description?.trim()) || null,
-            price,
-            quantity,
-            sanitizeText(row.unit?.trim()) || 'unit',
-            sanitizeText(row.category?.trim()) || 'other'
+          await tx.query(
+            `INSERT INTO products
+             (farmer_id, name, description, price, quantity, unit, category)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+            [
+              req.user.id,
+              row.name.trim(),
+              sanitizeText(row.description?.trim()) || null,
+              price,
+              quantity,
+              sanitizeText(row.unit?.trim()) || 'unit',
+              sanitizeText(row.category?.trim()) || 'other',
+            ]
           );
+          await tx.query('RELEASE SAVEPOINT bulk_upload_row');
           results.created++;
-        } catch (e) {
+        } catch (error) {
+          await tx.query('ROLLBACK TO SAVEPOINT bulk_upload_row');
+          await tx.query('RELEASE SAVEPOINT bulk_upload_row');
           results.skipped++;
-          results.errors.push({ row: rowNum, error: e.message });
+          results.errors.push({ row: rowNum, error: error.message });
         }
       }
     });
-
-    transaction(records);
 
     res.json({
       success: true,
