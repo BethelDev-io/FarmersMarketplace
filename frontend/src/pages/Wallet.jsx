@@ -100,6 +100,7 @@ import TrustlinePanel from '../components/wallet/TrustlinePanel';
 import SendForm from '../components/wallet/SendForm';
 import AlertsPanel from '../components/wallet/AlertsPanel';
 import PaymentStreams from '../components/wallet/PaymentStreams';
+import FreighterConnect from '../components/wallet/FreighterConnect';
 import TransactionHistory from '../components/wallet/TransactionHistory';
 
 export default function Wallet() {
@@ -515,6 +516,8 @@ export default function Wallet() {
               onSave={saveBudget}
             />
           )}
+
+          <FreighterConnect />
 
           <TrustlinePanel wallet={wallet} trustlines={trustlines} />
 
