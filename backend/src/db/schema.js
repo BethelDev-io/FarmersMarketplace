@@ -111,7 +111,8 @@ if (USE_POSTGRES) {
 
   let sqlite;
   try {
-    sqlite = new Database(path.join(__dirname, '../../market.db'), {
+    // SQLITE_PATH=:memory: lets CI boot the server without leaving a file behind
+    sqlite = new Database(process.env.SQLITE_PATH || path.join(__dirname, '../../market.db'), {
       timeout: parseInt(process.env.DB_QUERY_TIMEOUT_SQLITE || '5000', 10),
     });
   } catch (err) {
