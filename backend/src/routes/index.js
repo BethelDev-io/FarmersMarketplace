@@ -4,7 +4,7 @@ const rateLimit = require('express-rate-limit');
 const { ipKeyGenerator } = require('express-rate-limit');
 const logger = require('../logger');
 const db = require('../db/schema');
-const StellarSdk = require('@stellar/stellar-sdk');
+const { server: horizonServer, sorobanServer } = require('../utils/stellar-config');
 
 // ============================================================================
 // Rate Limiter Stores
@@ -155,15 +155,20 @@ async function checkDatabase() {
   }
 }
 
+const HEALTH_CHECK_TIMEOUT_MS = 5000;
+
+function withTimeout(promise, ms) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 async function checkStellarHorizon(requestId) {
   const startTime = Date.now();
   try {
-    const horizonUrl = process.env.STELLAR_HORIZON_URL || 
-      (process.env.STELLAR_NETWORK === 'mainnet' 
-        ? 'https://horizon.stellar.org' 
-        : 'https://horizon-testnet.stellar.org');
-    const server = new StellarSdk.Horizon.Server(horizonUrl);
-    await server.root();
+    await withTimeout(horizonServer.root(), HEALTH_CHECK_TIMEOUT_MS);
     const duration = Date.now() - startTime;
     logger.info(JSON.stringify({ requestId: requestId || null, event: 'horizon_health_check', status: 'ok', responseTime: `${duration}ms` }));
     return { status: 'ok', responseTime: `${duration}ms` };
@@ -177,60 +182,15 @@ async function checkStellarHorizon(requestId) {
 async function checkSorobanRPC(requestId) {
   const startTime = Date.now();
   try {
-    const sorobanUrl = process.env.SOROBAN_RPC_URL;
-    if (!sorobanUrl) {
+    if (!process.env.SOROBAN_RPC_URL) {
       return { status: 'not_configured', responseTime: '0ms' };
     }
-    
-    const https = require('https');
-    const url = new URL(sorobanUrl);
-    
-    const postData = JSON.stringify({ 
-      jsonrpc: '2.0', 
-      id: 1, 
-      method: 'getHealth' 
-    });
-    
-    return new Promise((resolve) => {
-      const req = https.request({
-        hostname: url.hostname,
-        port: url.port || (url.protocol === 'https:' ? 443 : 80),
-        path: url.pathname,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(postData)
-        }
-      }, (res) => {
-        let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => {
-          const duration = Date.now() - startTime;
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            try {
-              const result = JSON.parse(data);
-              resolve({ status: 'ok', responseTime: `${duration}ms`, details: result });
-            } catch (parseError) {
-              resolve({ status: 'down', responseTime: `${duration}ms`, error: 'Invalid JSON response' });
-            }
-          } else {
-            resolve({ status: 'down', responseTime: `${duration}ms`, error: `HTTP ${res.statusCode}` });
-          }
-        });
-      });
-      
-      req.on('error', (error) => {
-        const duration = Date.now() - startTime;
-        logger.error('Soroban RPC health check failed:', { requestId: requestId || null, error: error.message });
-        resolve({ status: 'down', responseTime: `${duration}ms`, error: error.message });
-      });
-      
-      req.write(postData);
-      req.end();
-    });
+    const health = await withTimeout(sorobanServer.getHealth(), HEALTH_CHECK_TIMEOUT_MS);
+    const duration = Date.now() - startTime;
+    return { status: 'ok', responseTime: `${duration}ms`, details: health };
   } catch (error) {
     const duration = Date.now() - startTime;
-    logger.error('Soroban RPC health check failed:', { error: error.message });
+    logger.error('Soroban RPC health check failed:', { requestId: requestId || null, error: error.message });
     return { status: 'down', responseTime: `${duration}ms`, error: error.message };
   }
 }
@@ -284,8 +244,8 @@ async function getHealthCheckResponse(includeVersion = false, requestId) {
       redis: redisCheck
     };
     
-    const criticalDown = [dbCheck.status, horizonCheck.status].some(status => status === 'down');
-    const overallStatus = criticalDown ? 'down' : 'ok';
+    const anyDown = Object.values(checks).some(check => check.status === 'down');
+    const overallStatus = anyDown ? 'down' : 'ok';
     
     const uptime = process.uptime();
     const responseTime = Date.now() - startTime;
