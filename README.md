@@ -601,3 +601,6 @@ For security vulnerabilities, follow the process in [SECURITY.md](./SECURITY.md)
 
 <!-- handsoff-issue-1382 -->
 - #1382: Align `api/client.js` with real backend routes: about a dozen methods call endpoints that don't exist
+
+<!-- handsoff-issue-1525 -->
+- #1525: CT-06: `creator-earnings::claim` lets the caller choose any token, but balances aren't tracked per token
