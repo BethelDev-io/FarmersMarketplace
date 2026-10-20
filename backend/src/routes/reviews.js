@@ -23,6 +23,7 @@ async function recalcRating(productId) {
   ]);
 }
 
+// GET /api/reviews/:productId - approved reviews only (public)
 router.get('/:productId', async (req, res) => {
   const { rows } = await db.query(
     `SELECT r.id, r.rating, r.comment AS body, r.created_at, u.name AS buyer_name
@@ -69,6 +70,12 @@ adminRouter.get('/pending', auth, async (req, res) => {
   res.json({ success: true, data: rows });
 });
 
+// DELETE /api/reviews/:id - buyer deletes own review
+router.delete('/:id', auth, async (req, res) => {
+  const review = (
+    await db.query('SELECT * FROM reviews WHERE id = $1 AND buyer_id = $2', [req.params.id, req.user.id])
+  ).rows[0];
+  if (!review) return err(res, 404, 'Review not found or not yours', 'not_found');
 router.delete('/:id', auth, async (req, res) => {
   const { rows } = await db.query('SELECT * FROM reviews WHERE id = $1 AND buyer_id = $2', [
     req.params.id,
@@ -82,6 +89,7 @@ router.delete('/:id', auth, async (req, res) => {
   res.json({ success: true, message: 'Review deleted' });
 });
 
+// POST /api/reviews
 router.post('/', auth, validate.review, async (req, res) => {
   if (req.user.role !== 'buyer')
     return err(res, 403, 'Only buyers can submit reviews', 'forbidden');
@@ -99,6 +107,17 @@ router.post('/', auth, validate.review, async (req, res) => {
      LIMIT 1`,
     [req.user.id, orderId]
   );
+  if (!orderRows[0])
+    return err(res, 403, 'Purchase required to review this product', 'purchase_required');
+
+  const { rows: existingReviews } = await db.query(
+    'SELECT id FROM reviews WHERE order_id = $1',
+    [orderRows[0].id]
+  );
+  if (existingReviews[0])
+    return err(res, 409, 'You have already reviewed this order', 'duplicate_review');
+
+  const order = orderRows[0];
   const order = orderRows[0];
   if (!order) return err(res, 403, 'Purchase required to review this product', 'purchase_required');
 
