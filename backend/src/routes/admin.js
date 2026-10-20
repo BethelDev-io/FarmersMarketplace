@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const db = require('../db/schema');
+const { invalidateAuthStatus } = require('../cache');
 const auth = require('../middleware/auth');
 const requireAdmin = require('../middleware/requireAdmin');
 const { sendPayment } = require('../utils/stellar');
@@ -123,6 +124,19 @@ router.get('/orders', async (req, res) => {
   const total = Number(countResult.rows[0].count);
   const pages = Math.ceil(total / limit);
 
+// DELETE /api/admin/users/:id - deactivate user
+router.delete('/users/:id', (req, res) => {
+router.delete('/users/:id', adminAuth, async (req, res) => {
+  const userId = req.params.id;
+  
+  const user = (await db.query('SELECT * FROM users WHERE id = $1', [userId])).rows[0];
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  
+  await db.query('UPDATE users SET active = 0 WHERE id = $1', [userId]);
+  await invalidateAuthStatus(userId);
+
+  res.json({ message: 'User deactivated successfully' });
+});
   const { rows: orders } = await db.query(
     `SELECT o.id, o.buyer_id, b.name AS buyer_name, o.product_id,
             p.name AS product_name, o.quantity, o.total_price, o.status, o.created_at
