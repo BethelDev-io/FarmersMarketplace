@@ -3,7 +3,8 @@ const db = require('../db/schema');
 const auth = require('../middleware/auth');
 const validate = require('../middleware/validate');
 const { sendDisputeOpenedEmail, sendDisputeResolvedEmail } = require('../utils/mailer');
-const { burnRewardTokens, invokeEscrowContract } = require('../utils/stellar');
+const { burnRewardTokens } = require('../utils/stellar');
+const { invokeEscrowContract } = require('../utils/stellar-contracts');
 const { sendPushToUser } = require('../utils/pushNotifications');
 const logger = require('../logger');
 const { writeAuditLog } = require('../utils/auditLog');
@@ -119,7 +120,16 @@ router.patch('/:id/resolve', auth, async (req, res, next) => {
     if (dispute.status === 'resolved')
       return res.status(400).json({ error: 'Dispute already resolved' });
 
-    const { resolution, split_percent_buyer } = req.body;
+    const { buyer_bps } = req.body;
+    let { resolution, split_percent_buyer } = req.body;
+    // buyer_bps (0-10000) is the contract's native unit; map it onto the same
+    // resolution/split fields so the DB row and audit log stay consistent.
+    if (buyer_bps !== undefined) {
+      if (!Number.isInteger(buyer_bps) || buyer_bps < 0 || buyer_bps > 10000)
+        return res.status(400).json({ error: 'buyer_bps must be an integer between 0 and 10000' });
+      resolution = buyer_bps === 10000 ? 'buyer' : buyer_bps === 0 ? 'farmer' : 'split';
+      split_percent_buyer = buyer_bps / 100;
+    }
     if (!['buyer', 'farmer', 'split'].includes(resolution))
       return res.status(400).json({ error: "resolution must be 'buyer', 'farmer', or 'split'" });
     if (resolution === 'split') {
@@ -152,18 +162,17 @@ router.patch('/:id/resolve', auth, async (req, res, next) => {
     const adminRows = await db.query('SELECT stellar_secret_key FROM users WHERE id = $1', [req.user.id]);
     const adminSecret = adminRows.rows[0]?.stellar_secret_key;
     if (adminSecret) {
-      invokeEscrowContract({
-        action: 'resolve_dispute',
-        senderSecret: adminSecret,
       const escrowPayload = {
-        action: 'dispute',
+        action: 'resolve_dispute',
         senderSecret: await decryptUserSecretKey(adminSecret),
         orderId: dispute.order_id,
         buyerPublicKey: buyer?.stellar_public_key,
         farmerPublicKey: farmer?.stellar_public_key,
         buyerBps,
         userId: req.user.id,
-      }).catch((e) => logger.warn('[disputes] escrow resolve_dispute failed (non-fatal):', e.message));
+      };
+      invokeEscrowContract(escrowPayload)
+        .catch((e) => logger.warn('[disputes] escrow resolve_dispute failed (non-fatal):', e.message));
     }
 
     await db.query(
