@@ -958,7 +958,14 @@ export default function ProductDetail() {
               <span style={{ cursor: 'pointer', textDecoration: 'underline', color: '#2d6a4f' }}
                 onClick={() => navigate(`/farmer/${product.farmer_id}`)}>
                 {product.farmer_name}
-              </span>
+              </span>{' '}
+              <button
+                type="button"
+                onClick={() => navigate(`/messages?to=${encodeURIComponent(product.farmer_id)}`)}
+                style={{ marginLeft: 8, background: 'none', border: '1px solid #2d6a4f', color: '#2d6a4f', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 13 }}
+              >
+                {t('inbox.messageFarmer')}
+              </button>
             </div>
             {product.farm_lat != null && product.farm_lng != null && (
               <div style={{ fontSize: 13, color: '#666', marginTop: 4 }}>

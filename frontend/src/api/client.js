@@ -394,6 +394,16 @@ export const api = {
   },
   getStockStreamUrl: (productId) => `${BASE}/products/${encodeURIComponent(productId)}/stock-stream`,
   getUnreadMessageCount: () => request('/messages/unread-count'),
+  getConversations: (params) => request(`/messages${toQs(params)}`),
+  getThread: (userId, params) => request(`/messages/${encodeURIComponent(userId)}${toQs(params)}`),
+  sendMessage: (body) => request('/messages', { method: 'POST', body }),
+  markConversationRead: (userId) => request(`/messages/${encodeURIComponent(userId)}/read`, { method: 'POST' }),
+
+  // Notification center (cursor-paginated, BE-24)
+  getNotifications: (params) => request(`/notifications${toQs(params)}`),
+  getUnreadNotificationCount: () => request('/notifications/unread-count'),
+  markNotificationRead: (id) => request(`/notifications/${encodeURIComponent(id)}/read`, { method: 'POST' }),
+  markAllNotificationsRead: () => request('/notifications/read-all', { method: 'POST' }),
 
   getFarmer: (id) => request(`/farmers/${id}`),
   updateFarmerProfile: (body) => request("/farmers/me", { method: "PATCH", body }),

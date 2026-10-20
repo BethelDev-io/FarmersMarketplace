@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { api } from '../api/client';
 import NotFound from './NotFound';
 
@@ -268,6 +269,7 @@ function CoopDetailModal({ coop, onClose }) {
 export default function FarmerProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [farmer, setFarmer] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -359,6 +361,13 @@ export default function FarmerProfile() {
           </div>
           <button style={{ ...s.streamBtn, marginTop: 14 }} onClick={() => setShowStreamModal(true)}>
             Start a Payment Stream
+          </button>
+          <button
+            type="button"
+            style={{ ...s.streamBtn, marginTop: 14, marginLeft: 8 }}
+            onClick={() => navigate(`/messages?to=${encodeURIComponent(farmer.id)}`)}
+          >
+            {t('inbox.messageFarmer')}
           </button>
         </div>
       </div>
