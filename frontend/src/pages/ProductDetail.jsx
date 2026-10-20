@@ -787,8 +787,8 @@ export default function ProductDetail() {
 
   if (result) {
     return (
-      <div style={s.page}>
-        <div style={s.card}>
+      <div className="product-detail-page" style={s.page}>
+        <div className="product-detail-card" style={s.card}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>{result.escrow ? '🔒' : '✅'}</div>
           <div style={s.success}>
             {result.escrow ? (
@@ -845,8 +845,8 @@ export default function ProductDetail() {
 
   if (confirming) {
     return (
-      <div style={s.page}>
-        <div style={s.card}>
+      <div className="product-detail-page" style={s.page}>
+        <div className="product-detail-card" style={s.card}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>⏳</div>
           <div style={s.confirming}>
             <strong>Confirming payment...</strong>
@@ -859,7 +859,7 @@ export default function ProductDetail() {
   }
 
   return (
-    <div style={s.page}>
+    <div className="product-detail-page" style={s.page}>
       <Helmet>
         <title>{shareTitle}</title>
         <meta name="description" content={shareDescription} />
@@ -873,7 +873,7 @@ export default function ProductDetail() {
         <meta name="twitter:description" content={shareDescription} />
         {shareImage ? <meta name="twitter:image" content={shareImage} /> : null}
       </Helmet>
-      <div style={s.card}>
+      <div className="product-detail-card" style={s.card}>
         {product.video_url ? (
           <video
             controls
@@ -1159,7 +1159,7 @@ export default function ProductDetail() {
         {product.pricing_model !== 'fixed' && (
           <div style={{ marginBottom: 20 }}>
             <label style={s.label}>{product.pricing_model === 'pwyw' ? 'Pay What You Want' : 'Donation'}</label>
-            <div style={s.row}>
+            <div className="detail-purchase-row" style={s.row}>
               <input
                 style={{ ...s.input, width: 120 }}
                 type="number"
@@ -1264,7 +1264,7 @@ export default function ProductDetail() {
         {product.pricing_type === 'weight' ? (
           <div style={{ marginBottom: 20 }}>
             <label style={s.label}>Weight ({product.unit})</label>
-            <div style={s.row}>
+            <div className="detail-purchase-row" style={s.row}>
               <input
                 style={{ ...s.input, width: 120 }}
                 type="number"
@@ -1282,7 +1282,7 @@ export default function ProductDetail() {
             </div>
           </div>
         ) : (
-          <div style={s.row}>
+          <div className="detail-purchase-row" style={s.row}>
             <label style={{ fontSize: 14 }}>{t('productDetail.quantity')}</label>
             <input style={s.input} type="number" min={product.min_order_quantity || 1} max={currentStock} value={qty}
               onChange={e => {

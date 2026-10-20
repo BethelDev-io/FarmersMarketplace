@@ -501,13 +501,12 @@ These codes are stable on-chain ABI values. Never reuse a code, even after remov
 | 25 | `InvalidRoyalty` | Cooperative royalty exceeds 10 000 bps (100%) |
 | 26 | `EvidenceLimitReached` | Party already submitted the maximum number of evidence hashes |
 | 27 | `NotDisputed` | Operation requires the escrow to be disputed |
-| 28 | `NotInitialized` | Admin not configured; `initialize` has not been called |
+| 28 | `NotInitialized` | Admin or settlement configuration is missing; call `initialize` first |
+| 29 | `InvalidParties` | Buyer equals farmer, or the cooperative address equals either party |
+| 30 | `InvalidCoopConfig` | Cooperative threshold or member configuration is invalid |
+| 31 | `NotInDispute` | `resolve_dispute` called on an escrow that is not disputed |
 
-Next available code: **29**. See the `NEXT_CODE` comment in `contracts/escrow/src/lib.rs` for the authoritative value.
-| 23 | `NotInitialized` | A stored value settlement depends on (platform fee, fee destination, admin) is missing because `initialize` was never called |
-| 24 | `NotInDispute` | `resolve_dispute` called on an escrow that is not in the `Disputed` state |
-
-Next available code: **25**. See the `NEXT_CODE` comment in `contracts/escrow/src/lib.rs` for the authoritative value.
+Next available code: **32**. See the `NEXT_CODE` comment in `contracts/escrow/src/lib.rs` for the authoritative value.
 
 ### Build & Test
 

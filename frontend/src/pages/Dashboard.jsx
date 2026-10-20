@@ -22,7 +22,7 @@ import PendingMultisigPanel from '../components/dashboard/PendingMultisigPanel';
 const s = {
   page: { maxWidth: 900, margin: '0 auto', padding: 16 },
   title: { fontSize: 24, fontWeight: 700, color: '#2d6a4f', marginBottom: 24 },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 24 },
+  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 340px), 1fr))', gap: 24 },
   card: { background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 1px 8px #0001' },
   label: { display: 'block', fontSize: 13, marginBottom: 4, color: '#555' },
   input: {
@@ -1037,7 +1037,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div style={s.page}>
+    <div className="farmer-dashboard-page" style={s.page}>
       {deleteConfirm && (
         <div
           role="dialog"
@@ -1124,6 +1124,7 @@ export default function Dashboard() {
       >
         <div style={s.title}>🌾 Farmer Dashboard</div>
         <div
+          className="dashboard-heading"
           style={{
             fontSize: 13,
             color: rate ? '#2d6a4f' : '#999',
@@ -1150,7 +1151,7 @@ export default function Dashboard() {
       <div style={{ ...s.card, marginBottom: 24 }}>
         <h3 style={{ marginBottom: 12, color: '#333' }}>Flash Sales</h3>
         {flashSaleMsg && <div role={flashSaleMsg.type === 'ok' ? 'status' : 'alert'} style={{ ...s.msg, background: flashSaleMsg.type === 'ok' ? '#d8f3dc' : '#fee', color: flashSaleMsg.type === 'ok' ? '#2d6a4f' : '#c0392b' }}>{flashSaleMsg.text}</div>}
-        <form onSubmit={handleSetFlashSale} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 10, alignItems: 'end' }}>
+        <form onSubmit={handleSetFlashSale} className="dashboard-flash-sale-form">
           <div>
             <label style={s.label}>Product</label>
             <select style={s.input} value={flashSaleForm.product_id} onChange={(e) => setFlashSaleForm((f) => ({ ...f, product_id: e.target.value }))} required>
