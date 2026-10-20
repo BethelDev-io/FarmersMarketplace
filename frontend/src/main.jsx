@@ -6,6 +6,7 @@ import App from "./App";
 import "./browser-compat.css";
 import "./responsive.css";
 import "./accessibility.css";
+import "./theme.css";
 import "./i18n";
 
 if ("serviceWorker" in navigator) {

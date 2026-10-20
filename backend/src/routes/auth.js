@@ -6,6 +6,7 @@ const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
 const db = require('../db/schema');
 const { currentTimestamp } = require('../db/dialect');
+const { invalidateAuthStatus } = require('../cache');
 const {
   createWalletFromMnemonic,
   deriveKeypairFromMnemonic,
@@ -92,7 +93,10 @@ const COOKIE_OPTIONS = {
 };
 
 function signAccessToken(payload) {
-  return jwt.sign(payload, getJwtSecret(), { expiresIn: ACCESS_TOKEN_TTL });
+  return jwt.sign({ ...payload, typ: 'access' }, getJwtSecret(), {
+    algorithm: 'HS256',
+    expiresIn: ACCESS_TOKEN_TTL,
+  });
 }
 
 function getJwtSecret() {
@@ -427,7 +431,7 @@ router.get('/stream-token', auth, (req, res) => {
   const token = jwt.sign(
     { id: req.user.id, scope: 'stream' },
     getJwtSecret(),
-    { expiresIn: '60s' }
+    { algorithm: 'HS256', expiresIn: '60s' }
   );
   res.json({ token, expiresIn: 60 });
 });
@@ -508,6 +512,7 @@ router.post('/deactivate', auth, async (req, res) => {
   await db.query('UPDATE users SET active = 0, deactivated_at = CURRENT_TIMESTAMP WHERE id = $1', [
     req.user.id,
   ]);
+  await invalidateAuthStatus(req.user.id);
 
   // Revoke all sessions
   await db.query('DELETE FROM refresh_tokens WHERE user_id = $1', [req.user.id]);
@@ -544,6 +549,7 @@ router.delete('/account', auth, async (req, res) => {
 
   // Delete user — cascade handles related rows (orders, refresh_tokens, etc.)
   await db.query('DELETE FROM users WHERE id = $1', [req.user.id]);
+  await invalidateAuthStatus(req.user.id);
 
   // Clear the refresh token cookie
   res.clearCookie('refreshToken', { path: '/api/auth' });
