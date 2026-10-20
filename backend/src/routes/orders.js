@@ -665,6 +665,7 @@ router.post('/', auth, requireEmailVerified, orderRateLimit, validate.order, asy
       message: 'Order created for SEP-0007 payment',
     };
     if (idempotencyKey) await cacheResponse(idempotencyKey, { ...responseData, _status: 200 }, undefined, req.user.id);
+    return res.status(200).json(responseData);
   const stockUpdate = await db.query(
     `UPDATE products
      SET quantity = quantity - $1
@@ -675,27 +676,14 @@ router.post('/', auth, requireEmailVerified, orderRateLimit, validate.order, asy
     return err(res, 409, 'Insufficient stock for this product', 'out_of_stock');
   }
 
-  const { rows: orderRows } = await db.query(
-    `INSERT INTO orders (buyer_id, product_id, quantity, total_price, custom_price, status, address_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-    [req.user.id, product_id, quantity, totalPrice, custom_price || null, 'pending', address_id || null]
-  );
-  const orderId = orderRows?.[0]?.id ?? Date.now() + Math.floor(Math.random() * 1000);
-
   let couponUseId = null;
-  if (appliedCoupon && req.body.payment_method !== 'sep7') {
+  if (appliedCoupon) {
     couponUseId = await reserveCoupon(appliedCoupon.id, req.user.id);
     if (couponUseId == null) {
       await db.query('UPDATE orders SET status = $1 WHERE id = $2', ['failed', orderId]);
+      await restoreProductStock(product_id, quantity);
       return err(res, 409, 'Coupon usage limit reached', 'coupon_exhausted');
     }
-  }
-
-  // SEP-0007 wallet flow — return payment link without processing
-  if (req.body.payment_method === 'sep7') {
-    const responseData = { success: true, orderId, status: 'pending', totalPrice, message: 'Order created for SEP-0007 payment' };
-    if (idempotencyKey) await cacheResponse(idempotencyKey, { ...responseData, _status: 200 }, undefined, req.user.id);
-    return res.json(responseData);
   }
 
   // Payment processing
@@ -810,16 +798,9 @@ router.post('/', auth, requireEmailVerified, orderRateLimit, validate.order, asy
       }
     }
 
-    if (appliedCoupon) {
-      await db.query('UPDATE coupons SET used_count = used_count + 1 WHERE id = $1', [appliedCoupon.id]);
-      await db.query('INSERT INTO coupon_uses (coupon_id, user_id) VALUES ($1, $2)', [appliedCoupon.id, req.user.id]);
-    }
-
     Promise.resolve(
       sendOrderEmails({ order: { id: orderId, quantity, total_price: totalPrice, stellar_tx_hash: txHash }, product, buyer, farmer })
     ).catch((mailErr) => logger.error('Email notification failed:', { error: mailErr.message }));
-    sendOrderEmails({ order: { id: orderId, quantity, total_price: totalPrice, stellar_tx_hash: txHash }, product, buyer, farmer })
-      .catch((mailErr) => logger.error('Email notification failed:', { error: mailErr.message }));
 
     if (farmer) {
       Promise.resolve(
@@ -1312,40 +1293,6 @@ router.get('/stream', async (req, res) => {
 });
 
 // GET /api/orders/:id/carbon — on-chain carbon offset record + shareable certificate URL
-router.post('/:id/claim-preorder', auth, async (req, res) => {
-  const { rows } = await db.query(
-    `SELECT o.*, p.is_preorder, p.preorder_delivery_date, p.farmer_id,
-            u.stellar_secret_key AS farmer_secret
-     FROM orders o
-     JOIN products p ON p.id = o.product_id
-     JOIN users u ON u.id = p.farmer_id
-     WHERE o.id = $1`,
-    [req.params.id]
-  );
-  const order = rows[0];
-  if (!order) return err(res, 404, 'Order not found', 'not_found');
-
-  const unlockAtUnix = parsePreorderUnlockUnix(order.preorder_delivery_date);
-  if (!order.is_preorder || !unlockAtUnix || unlockAtUnix > Math.floor(Date.now() / 1000)) {
-    return err(res, 400, 'Pre-order is not deliverable yet', 'preorder_not_deliverable');
-  }
-
-  if (!order.escrow_balance_id || order.escrow_status !== 'funded') {
-    return err(res, 400, 'Pre-order is not funded yet', 'preorder_not_funded');
-  }
-
-  try {
-    const txHash = await claimBalance({
-      claimantSecret: order.farmer_secret,
-      balanceId: order.escrow_balance_id,
-    });
-    await db.query('UPDATE orders SET status = $1, claim_tx_hash = $2 WHERE id = $3', ['delivered', txHash, order.id]);
-    return res.json({ success: true, orderId: order.id, status: 'delivered', txHash });
-  } catch (e) {
-    return res.status(402).json({ success: false, message: e.message || 'Pre-order claim failed', code: 'preorder_claim_failed' });
-  }
-});
-
 router.get('/:id/carbon', auth, async (req, res) => {
   const { rows } = await db.query(
     `SELECT o.id, o.buyer_id, p.farmer_id
