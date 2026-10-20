@@ -63,10 +63,23 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
-// GET /api/messages — conversations sorted by last_message_at DESC
+// GET /api/messages — conversations sorted by last_message_at DESC (paginated)
 router.get('/', auth, async (req, res) => {
   const userId = req.user.id;
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+  const offset = (page - 1) * limit;
+
   try {
+    // Count total conversations
+    const { rows: countRows } = await db.query(
+      `SELECT COUNT(DISTINCT CASE WHEN sender_id = $1 THEN receiver_id ELSE sender_id END) as count
+       FROM messages
+       WHERE sender_id = $1 OR receiver_id = $1`,
+      [userId]
+    );
+    const total = parseInt(countRows[0]?.count || 0, 10);
+
     const { rows } = await db.query(
       `SELECT
          CASE WHEN m.sender_id = $1 THEN m.receiver_id ELSE m.sender_id END as other_user_id,
@@ -81,10 +94,18 @@ router.get('/', auth, async (req, res) => {
          SELECT MAX(id) FROM messages WHERE sender_id = $1 OR receiver_id = $1
          GROUP BY CASE WHEN sender_id = $1 THEN receiver_id ELSE sender_id END
        )
-       ORDER BY m.created_at DESC`,
-      [userId]
+       ORDER BY m.created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [userId, limit, offset]
     );
-    res.json({ success: true, data: rows });
+    res.json({ 
+      success: true, 
+      data: rows,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
+    });
   } catch (e) {
     err(res, 500, 'Failed to fetch conversations: ' + e.message, 'server_error');
   }
