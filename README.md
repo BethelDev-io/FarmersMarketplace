@@ -115,18 +115,18 @@ Migrations run automatically on app startup — no manual step needed for develo
 - Rollback files:  `backend/migrations/NNN_description.undo.sql` (optional)
 - Applied migrations are tracked in a `migrations` table in the database
 - Running `migrate` twice is safe — already-applied migrations are skipped
-- Historical migrations reuse numeric prefixes. The runner orders complete filenames lexically, so do not rename or renumber existing migrations; use a new, unique prefix greater than the current highest (`033`) for each new migration.
+- Historical migrations include duplicate prefixes (`032`, `034`, and `035`) and their complete filenames are immutable migration identities. Do not rename or renumber them. New migrations must use the next unused prefix greater than the current maximum (`036` and above), with matching `.undo.sql` files where rollback is supported.
 
 ### Creating a new migration
 
 ```bash
 # Up migration
 echo "ALTER TABLE products ADD COLUMN featured INTEGER DEFAULT 0;" \
-  > backend/migrations/034_add_featured.sql
+  > backend/migrations/036_add_featured.sql
 
 # Rollback (optional)
 echo "ALTER TABLE products DROP COLUMN IF EXISTS featured;" \
-  > backend/migrations/034_add_featured.undo.sql
+  > backend/migrations/036_add_featured.undo.sql
 
 npm run migrate
 ```
