@@ -49,6 +49,7 @@ const { checkGeoFence, checkCoordinateGeoFence } = require('../utils/geocheck');
 const { broadcastStockUpdate } = require('../utils/stockUpdates');
 const { couponNowExpression } = require('../utils/couponTime');
 const { decryptUserSecretKey } = require('../utils/crypto');
+const { transition } = require('../models/orderStatus');
 
 // XLM per kg per km
 const SHIPPING_RATE = 0.001;
@@ -591,41 +592,52 @@ router.post('/', auth, requireEmailVerified, orderRateLimit, validate.order, asy
       return res.status(402).json({ success: false, message: 'Insufficient XLM balance', code: 'insufficient_balance' });
   }
 
-  const { rows: reservedRows, rowCount: stockReserved } = await db.query(
-    `UPDATE products
-     SET quantity = quantity - $1
-     WHERE id = $2
-       AND quantity >= $1
-       AND active = true
-       AND (available_from IS NULL OR available_from <= CURRENT_TIMESTAMP)
-       AND (available_until IS NULL OR available_until >= CURRENT_TIMESTAMP)
-       AND (best_before IS NULL OR best_before >= CURRENT_DATE)
-     RETURNING quantity`,
-    [quantity, product_id]
-  );
-  if (!stockReserved) return err(res, 409, 'Insufficient stock or product no longer available', 'out_of_stock');
-  if (reservedRows[0]) broadcastStockUpdate(product_id, reservedRows[0].quantity);
-
   let orderRows;
+  let reservedQuantity;
   try {
-    ({ rows: orderRows } = await db.query(
-      `INSERT INTO orders (buyer_id, product_id, quantity, total_price, custom_price, status, address_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-      [req.user.id, product_id, quantity, totalPrice, custom_price || null, 'pending', address_id || null]
-    ));
+    ({ orderRows, reservedQuantity } = await db.withTransaction(async (tx) => {
+      const { rows: reservedRows } = await tx.query(
+        `UPDATE products
+         SET quantity = quantity - $1
+         WHERE id = $2
+           AND quantity >= $1
+           AND active = true
+           AND (available_from IS NULL OR available_from <= CURRENT_TIMESTAMP)
+           AND (available_until IS NULL OR available_until >= CURRENT_TIMESTAMP)
+           AND (best_before IS NULL OR best_before >= CURRENT_DATE)
+         RETURNING quantity`,
+        [quantity, product_id]
+      );
+      if (!reservedRows[0]) {
+        const stockError = new Error('Insufficient stock or product no longer available');
+        stockError.status = 409;
+        stockError.code = 'insufficient_stock';
+        stockError.publicMessage = stockError.message;
+        throw stockError;
+      }
+      const { rows } = await tx.query(
+        `INSERT INTO orders (buyer_id, product_id, quantity, total_price, custom_price, status, address_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+        [req.user.id, product_id, quantity, totalPrice, custom_price || null, 'pending', address_id || null]
+      );
+      return { orderRows: rows, reservedQuantity: reservedRows[0].quantity };
+    }));
   } catch (error) {
-    try {
-      await restoreProductStock(product_id, quantity);
-    } catch (restoreError) {
-      logger.error('[orders] Failed to restore stock after order insert failure', {
-        productId: product_id,
-        error: restoreError.message,
-      });
-    }
+    if (error.code === 'insufficient_stock') return err(res, 409, error.message, error.code);
     logger.error('[orders] Failed to create order after stock reservation', { error: error.message });
     return err(res, 500, 'Unable to create order', 'order_creation_failed');
   }
+  broadcastStockUpdate(product_id, reservedQuantity);
   const orderId = orderRows[0].id;
+  let couponUseId = null;
+  if (appliedCoupon && req.body.payment_method !== 'sep7') {
+    couponUseId = await reserveCoupon(appliedCoupon.id, req.user.id);
+    if (couponUseId == null) {
+      await transition(orderId, 'pending', 'failed', { actor: 'checkout', reason: 'coupon_exhausted' });
+      await restoreProductStock(product_id, quantity);
+      return err(res, 409, 'Coupon usage limit reached', 'coupon_exhausted');
+    }
+  }
 
   // SEP-0007 wallet flow — return payment link without processing
   if (req.body.payment_method === 'sep7') {
@@ -633,7 +645,7 @@ router.post('/', auth, requireEmailVerified, orderRateLimit, validate.order, asy
     try {
       await db.query('UPDATE orders SET stellar_memo = $1 WHERE id = $2', [memo, orderId]);
     } catch (error) {
-      await db.query('UPDATE orders SET status = $1 WHERE id = $2', ['failed', orderId]);
+      await transition(orderId, 'pending', 'failed', { actor: 'checkout', reason: 'payment_link_creation_failed' });
       try {
         await restoreProductStock(product_id, quantity);
       } catch (restoreError) {
@@ -664,6 +676,8 @@ router.post('/', auth, requireEmailVerified, orderRateLimit, validate.order, asy
       paymentLink,
       message: 'Order created for SEP-0007 payment',
     };
+    if (idempotencyKey) await cacheResponse(idempotencyKey, { ...responseData, _status: 200 });
+    return res.json(responseData);
     if (idempotencyKey) await cacheResponse(idempotencyKey, { ...responseData, _status: 200 }, undefined, req.user.id);
     return res.status(200).json(responseData);
   const stockUpdate = await db.query(
@@ -858,7 +872,7 @@ router.post('/', auth, requireEmailVerified, orderRateLimit, validate.order, asy
       await restoreProductStock(product_id, quantity);
       return res.status(402).json({ success: false, code: 'no_payment_path', message: e.message || 'Path payment could not be completed' });
     }
-    await db.query('UPDATE orders SET status = $1 WHERE id = $2', ['failed', orderId]);
+    await transition(orderId, 'pending', 'failed', { actor: 'checkout', reason: e.code || 'payment_failed' });
     await restoreProductStock(product_id, quantity);
 
     if (e.code === 'account_not_found') {
