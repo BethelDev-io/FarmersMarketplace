@@ -94,6 +94,21 @@ const EnvSchema = z.object({
 
   // Freshness alerts
   FRESHNESS_ALERT_DAYS: z.coerce.number().int().positive().default(3),
+}).superRefine((data, ctx) => {
+  if (data.NODE_ENV !== 'production') return;
+  if (!data.REFRESH_TOKEN_SECRET) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['REFRESH_TOKEN_SECRET'],
+      message: 'REFRESH_TOKEN_SECRET is required in production',
+    });
+  } else if (data.REFRESH_TOKEN_SECRET === data.JWT_SECRET) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['REFRESH_TOKEN_SECRET'],
+      message: 'REFRESH_TOKEN_SECRET must differ from JWT_SECRET in production',
+    });
+  }
 });
 
 let env;
@@ -102,7 +117,7 @@ try {
 } catch (err) {
   if (err instanceof ZodError) {
     console.error('[config] Invalid or missing environment variables:');
-    err.errors.forEach(e => {
+    err.issues.forEach(e => {
       console.error(`  ${e.path.join('.') || '(root)'}: ${e.message}`);
     });
     console.error('[config] Copy backend/.env.example to backend/.env and fill in the required values.');

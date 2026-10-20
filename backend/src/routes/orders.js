@@ -1278,7 +1278,7 @@ router.get('/stream', async (req, res) => {
   if (!token) return res.status(401).json({ error: 'No token' });
   let user;
   try {
-    user = jwt.verify(token, process.env.JWT_SECRET);
+    user = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     if (user.scope !== 'stream') return res.status(401).json({ error: 'Invalid token' });
   } catch {
     return res.status(401).json({ error: 'Invalid token' });

@@ -3,6 +3,7 @@ const router = express.Router();
 const requireAdmin = require("../middleware/requireAdmin");
 const { writeAuditLog } = require("../utils/auditLog");
 const db = require("../db/schema");
+const { invalidateAuthStatus } = require("../cache");
 const logger = require("../logger");
 
 // POST /api/admin/users/:id/ban
@@ -24,6 +25,7 @@ router.post("/users/:id/ban", requireAdmin, async (req, res) => {
       `UPDATE users SET banned_at = $1, ban_reason = $2 WHERE id = $3`,
       [bannedAt, reason || null, id]
     );
+    await invalidateAuthStatus(id);
 
     await writeAuditLog({
       adminId: req.user.id,
@@ -54,6 +56,7 @@ router.delete("/users/:id/ban", requireAdmin, async (req, res) => {
     if (!user.banned_at) return res.status(409).json({ error: "User is not banned." });
 
     await db.query(`UPDATE users SET banned_at = NULL, ban_reason = NULL WHERE id = $1`, [id]);
+    await invalidateAuthStatus(id);
 
     await writeAuditLog({
       adminId: req.user.id,
