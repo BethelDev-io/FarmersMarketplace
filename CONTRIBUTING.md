@@ -149,6 +149,7 @@ PRs that fail CI checks will not be merged.
 
 Configure `main` branch protection to require these checks before merging:
 
+- `Backend Tests` (job in `.github/workflows/ci.yml`), which runs the `node --check` syntax gate over `backend/src`, the restricted ESLint rules (`no-dupe-keys`, `no-redeclare`, `no-unreachable`, `no-dupe-class-members`), the server boot gate (polls `GET /api/v1/health` on an in-memory SQLite DB until 200 within 30 s), and the backend tests.
 - `Contracts (fmt, clippy, test, wasm)` (all four matrix entries: `contracts-workspace`, `contract-escrow`, `contract-reward-token`, `contract-carbon-offset`), which runs `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test`, the release WASM build and the escrow error-code / WASM-hash checks.
 
 ---

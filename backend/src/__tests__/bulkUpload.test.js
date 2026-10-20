@@ -30,10 +30,11 @@ function csvUpload(csvContent) {
 
 describe('POST /api/products/bulk', () => {
   beforeEach(() => {
-    mockDb.prepare = jest.fn(() => ({
-      run: jest.fn(),
-    }));
-    mockDb.transaction = jest.fn((fn) => fn);
+    mockDb.query = jest.fn().mockImplementation(async (sql) => {
+      if (/SELECT active FROM users/i.test(sql)) return { rows: [{ active: 1 }], rowCount: 1 };
+      return { rows: [{ id: 1 }], rowCount: 1 };
+    });
+    mockDb.withTransaction = jest.fn((work) => work(mockDb));
   });
 
   it('accepts a valid CSV and returns created count', async () => {
