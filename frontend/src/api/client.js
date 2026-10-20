@@ -207,6 +207,8 @@ async function request(path, options = {}, retry = true, csrfRetry = true) {
       const err = new Error(data.message || data.error || 'Request failed');
       err.code = data.code;
       err.status = res.status;
+      // Seconds until a rate-limited or locked-out request may be retried.
+      err.retryAfter = Number(res.headers.get('Retry-After')) || null;
       throw err;
     }
     return data;
@@ -562,6 +564,8 @@ export const api = {
   // Two-Factor Authentication
   setup2FA: () => request('/auth/2fa/setup', { method: 'POST' }),
   verify2FA: (body) => request('/auth/2fa/verify', { method: 'POST', body }),
+  // Second factor at login: exchanges the mfa_token from POST /auth/login for a session.
+  verifyLogin2FA: (body) => request('/auth/2fa/verify-login', { method: 'POST', body }),
   get2FAStatus: () => request('/auth/2fa/status'),
   disable2FA: () => request('/auth/2fa/disable', { method: 'POST' }),
 };

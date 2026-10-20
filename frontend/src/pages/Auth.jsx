@@ -21,6 +21,8 @@ const s = {
   formErr: { color: '#c0392b', fontSize: 13, marginTop: 8, padding: '8px 12px', background: '#fff0f0', borderRadius: 6 },
   link: { display: 'block', textAlign: 'center', marginTop: 16, color: '#2d6a4f', fontSize: 14 },
   strengthHint: { fontSize: 11, color: '#595959', marginTop: 3 },
+  hint: { fontSize: 14, color: '#595959', marginBottom: 16, lineHeight: 1.5 },
+  linkBtn: { display: 'block', width: '100%', background: 'none', border: 'none', color: '#2d6a4f', fontSize: 14, cursor: 'pointer', marginTop: 16, textAlign: 'center' },
 };
 
 // Returns the path the user was trying to reach before being sent to login,
@@ -56,15 +58,31 @@ function PasswordStrength({ password }) {
   );
 }
 
+// Maps a failed second-factor attempt to copy. 429/423 mean rate-limited or locked out,
+// other 4xx mean the code was rejected, and anything without a status is a network failure.
+function mfaErrorMessage(t, err) {
+  if (!err.status) return getErrorMessage(err);
+  if (err.status === 429 || err.status === 423) {
+    return err.retryAfter ? t('auth.mfa.locked', { seconds: err.retryAfter }) : getErrorMessage(err);
+  }
+  if (err.status >= 400 && err.status < 500) return t('auth.mfa.invalidCode');
+  return getErrorMessage(err);
+}
+
 export function LoginPage() {
   const { t } = useTranslation();
   const [form, setForm] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState('');
+  // Set when the password step returns mfa_required; the code step is shown until verified.
+  const [mfaToken, setMfaToken] = useState(null);
+  const [mfaCode, setMfaCode] = useState('');
+  const [useBackupCode, setUseBackupCode] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const passwordRef = React.useRef(null);
+  const mfaInputRef = React.useRef(null);
 
   function handleChange(field, value) {
     const updatedForm = { ...form, [field]: value };
@@ -79,6 +97,14 @@ export function LoginPage() {
     const errs = validateLogin(form);
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
     try {
+      const data = await api.login(form);
+      if (data.mfa_required) {
+        setMfaToken(data.mfa_token);
+        setMfaCode('');
+        return;
+      }
+      login(data.token, data.user);
+      navigate(data.user.role === 'farmer' ? '/dashboard' : '/marketplace');
       const { token, user } = await api.login(form);
       login(token, user);
       navigate(getPostLoginPath(location.state, user));
@@ -89,6 +115,39 @@ export function LoginPage() {
     }
   }
 
+  async function handleMfaSubmit(e) {
+    e.preventDefault();
+    setFormError('');
+    try {
+      const { token, user } = await api.verifyLogin2FA({ mfa_token: mfaToken, code: mfaCode.trim() });
+      login(token, user);
+      navigate(user.role === 'farmer' ? '/dashboard' : '/marketplace');
+    } catch (err) {
+      setFormError(mfaErrorMessage(t, err));
+      setMfaCode('');
+      mfaInputRef.current?.focus();
+    }
+  }
+
+  function handleMfaCodeChange(value) {
+    // Authenticator codes are digits only; pasted codes like "123 456" are cleaned here.
+    setMfaCode(useBackupCode ? value : value.replace(/\D/g, '').slice(0, 6));
+  }
+
+  function toggleBackupCode() {
+    setUseBackupCode(v => !v);
+    setMfaCode('');
+    setFormError('');
+    mfaInputRef.current?.focus();
+  }
+
+  function backToLogin() {
+    setMfaToken(null);
+    setMfaCode('');
+    setUseBackupCode(false);
+    setFormError('');
+  }
+
   return (
     <div style={s.wrap}>
       <Helmet>
@@ -97,27 +156,51 @@ export function LoginPage() {
       </Helmet>
       <div style={s.card}>
         <div style={s.title}>{t('auth.welcomeBack')}</div>
-        <form onSubmit={handleSubmit} noValidate>
-          <div style={s.field}>
-            <label style={s.label} htmlFor="login-email">{t('auth.email')}</label>
-            <input id="login-email" style={errors.email ? s.inputErr : s.input} type="email"
-              value={form.email} onChange={e => handleChange('email', e.target.value)} autoComplete="email"
-              aria-invalid={!!errors.email}
-              aria-describedby={errors.email ? 'login-email-err' : undefined} />
-            {errors.email && <div id="login-email-err" style={s.err} role="alert">{errors.email}</div>}
-          </div>
-          <div style={s.field}>
-            <label style={s.label} htmlFor="login-password">{t('auth.password')}</label>
-            <input id="login-password" ref={passwordRef} style={errors.password ? s.inputErr : s.input} type="password"
-              value={form.password} onChange={e => handleChange('password', e.target.value)} autoComplete="current-password"
-              aria-invalid={!!errors.password}
-              aria-describedby={errors.password ? 'login-password-err' : undefined} />
-            <PasswordStrength password={form.password} />
-            {errors.password && <div id="login-password-err" style={s.err} role="alert">{errors.password}</div>}
-          </div>
-          {formError && <div style={s.formErr} role="alert">{formError}</div>}
-          <button style={s.btn} type="submit">{t('auth.loginBtn')}</button>
-        </form>
+        {mfaToken ? (
+          <form onSubmit={handleMfaSubmit} noValidate>
+            <div style={s.hint}>{t(useBackupCode ? 'auth.mfa.backupPrompt' : 'auth.mfa.prompt')}</div>
+            <div style={s.field}>
+              <label style={s.label} htmlFor="login-mfa-code">
+                {t(useBackupCode ? 'auth.mfa.backupLabel' : 'auth.mfa.codeLabel')}
+              </label>
+              <input id="login-mfa-code" ref={mfaInputRef} style={formError ? s.inputErr : s.input} type="text"
+                value={mfaCode} onChange={e => handleMfaCodeChange(e.target.value)}
+                autoComplete="one-time-code" inputMode={useBackupCode ? 'text' : 'numeric'} autoFocus
+                aria-invalid={!!formError}
+                aria-describedby={formError ? 'login-mfa-err' : undefined} />
+            </div>
+            {formError && <div id="login-mfa-err" style={s.formErr} role="alert">{formError}</div>}
+            <button style={s.btn} type="submit" disabled={!mfaCode.trim()}>{t('auth.mfa.verifyBtn')}</button>
+            <button style={s.linkBtn} type="button" onClick={toggleBackupCode}>
+              {t(useBackupCode ? 'auth.mfa.useAuthenticator' : 'auth.mfa.useBackup')}
+            </button>
+            <button style={{ ...s.linkBtn, color: '#888', marginTop: 4 }} type="button" onClick={backToLogin}>
+              {t('auth.mfa.back')}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleSubmit} noValidate>
+            <div style={s.field}>
+              <label style={s.label} htmlFor="login-email">{t('auth.email')}</label>
+              <input id="login-email" style={errors.email ? s.inputErr : s.input} type="email"
+                value={form.email} onChange={e => handleChange('email', e.target.value)} autoComplete="email"
+                aria-invalid={!!errors.email}
+                aria-describedby={errors.email ? 'login-email-err' : undefined} />
+              {errors.email && <div id="login-email-err" style={s.err} role="alert">{errors.email}</div>}
+            </div>
+            <div style={s.field}>
+              <label style={s.label} htmlFor="login-password">{t('auth.password')}</label>
+              <input id="login-password" ref={passwordRef} style={errors.password ? s.inputErr : s.input} type="password"
+                value={form.password} onChange={e => handleChange('password', e.target.value)} autoComplete="current-password"
+                aria-invalid={!!errors.password}
+                aria-describedby={errors.password ? 'login-password-err' : undefined} />
+              <PasswordStrength password={form.password} />
+              {errors.password && <div id="login-password-err" style={s.err} role="alert">{errors.password}</div>}
+            </div>
+            {formError && <div style={s.formErr} role="alert">{formError}</div>}
+            <button style={s.btn} type="submit">{t('auth.loginBtn')}</button>
+          </form>
+        )}
         <Link to="/register" style={s.link}>{t('auth.noAccount')}</Link>
         <Link to="/recover" style={{ ...s.link, fontSize: 12, color: '#888' }}>Lost wallet access? Recover with seed phrase</Link>
       </div>
