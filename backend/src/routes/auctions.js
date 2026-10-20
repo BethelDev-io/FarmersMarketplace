@@ -1,44 +1,15 @@
 'use strict';
 
 const router = require('express').Router();
-const { z } = require('zod');
+const validate = require('../middleware/validate');
 const db = require('../db/schema');
 const auth = require('../middleware/auth');
 const requireEmailVerified = require('../middleware/requireEmailVerified');
 const { err } = require('../middleware/error');
 const logger = require('../logger');
 
-const MIN_MINUTES = parseInt(process.env.MIN_AUCTION_DURATION_MINUTES ?? '5', 10);
-
-function validateBody(schema) {
-  return (req, res, next) => {
-    const result = schema.safeParse(req.body);
-    if (!result.success) {
-      const msg = result.error.issues[0]?.message || 'Validation error';
-      return err(res, 400, msg, 'validation_error');
-    }
-    req.body = result.data;
-    next();
-  };
-}
-
-const createAuctionSchema = z.object({
-  product_id:    z.coerce.number().int().positive(),
-  start_price:   z.coerce.number().positive(),
-  reserve_price: z.coerce.number().positive().optional(),
-  min_increment: z.coerce.number().min(0).optional().default(0),
-  ends_at: z.string().datetime({ offset: true }).refine(
-    (v) => new Date(v) >= new Date(Date.now() + MIN_MINUTES * 60 * 1000),
-    `ends_at must be at least ${MIN_MINUTES} minutes in the future`
-  ),
-});
-
-const bidSchema = z.object({
-  amount: z.coerce.number().positive('amount must be a positive number'),
-});
-
 // ── POST /api/auctions ────────────────────────────────────────────────────────
-router.post('/', auth, requireEmailVerified, validateBody(createAuctionSchema), async (req, res) => {
+router.post('/', auth, requireEmailVerified, validate.auction, async (req, res) => {
   if (req.user.role !== 'farmer') return err(res, 403, 'Farmers only', 'forbidden');
 
   const { product_id, start_price, reserve_price, min_increment, ends_at } = req.body;
@@ -123,7 +94,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // ── POST /api/auctions/:id/bid ────────────────────────────────────────────────
-router.post('/:id/bid', auth, validateBody(bidSchema), async (req, res) => {
+router.post('/:id/bid', auth, validate.bid, async (req, res) => {
   if (req.user.role !== 'buyer') return err(res, 403, 'Only buyers can bid', 'forbidden');
 
   const auctionId = parseInt(req.params.id, 10);
@@ -182,10 +153,11 @@ async function placeBidPostgres({ auctionId, buyerId, amount }) {
       return validation;
     }
 
-    await client.query(
-      'INSERT INTO bids (auction_id, buyer_id, amount) VALUES ($1, $2, $3)',
-      [auctionId, buyerId, amount]
-    );
+    await client.query('INSERT INTO bids (auction_id, buyer_id, amount) VALUES ($1, $2, $3)', [
+      auctionId,
+      buyerId,
+      amount,
+    ]);
     await client.query(
       'UPDATE auctions SET current_bid = $1, highest_bidder_id = $2 WHERE id = $3',
       [amount, buyerId, auctionId]
@@ -239,8 +211,7 @@ function validateBidRules(auction, buyerId, amount) {
   if (auction.status === 'cancelled')
     return fail(400, 'Auction has been cancelled', 'auction_cancelled');
 
-  if (auction.status === 'closed')
-    return fail(400, 'Auction has already closed', 'auction_closed');
+  if (auction.status === 'closed') return fail(400, 'Auction has already closed', 'auction_closed');
 
   // Treat past end_time as closed even if the cron hasn't run yet
   if (new Date(auction.ends_at) <= new Date())
@@ -288,7 +259,7 @@ router.get('/:id/bids', auth, async (req, res) => {
   );
 
   // anonymise: first name + last initial
-  const data = bids.map(b => {
+  const data = bids.map((b) => {
     const parts = (b.bidder_name || '').trim().split(/\s+/);
     const first = parts[0] || 'Bidder';
     const last = parts[1] ? parts[1][0] + '.' : '';
@@ -305,9 +276,10 @@ router.patch('/:id/end', auth, async (req, res) => {
   if (auction.farmer_id !== req.user.id) return err(res, 403, 'Forbidden', 'forbidden');
   if (auction.status !== 'active') return err(res, 400, 'Auction is not active', 'not_active');
 
-  await db.query(`UPDATE auctions SET status = 'ended', ends_at = CURRENT_TIMESTAMP WHERE id = $1`, [
-    auction.id,
-  ]);
+  await db.query(
+    `UPDATE auctions SET status = 'ended', ends_at = CURRENT_TIMESTAMP WHERE id = $1`,
+    [auction.id]
+  );
   res.json({ success: true });
 });
 

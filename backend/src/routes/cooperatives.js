@@ -13,6 +13,7 @@ const router = require('express').Router();
 const StellarSdk = require('@stellar/stellar-sdk');
 const db = require('../db/schema');
 const auth = require('../middleware/auth');
+const validate = require('../middleware/validate');
 const { err } = require('../middleware/error');
 const { createWallet, server, networkPassphrase } = require('../utils/stellar');
 const { encrypt, decrypt, decryptUserSecretKey } = require('../utils/crypto');
@@ -22,7 +23,7 @@ const MULTISIG_THRESHOLD_XLM = 50; // payments above this require multi-sig
 const TX_EXPIRY_HOURS = 24;
 
 // POST /api/cooperatives — create a cooperative (farmer only)
-router.post('/', auth, async (req, res) => {
+router.post('/', auth, validate.cooperative, async (req, res) => {
   const { name } = req.body;
   if (!name) return err(res, 400, 'name is required', 'validation_error');
 
@@ -83,7 +84,7 @@ router.get('/', async (req, res) => {
 
 // POST /api/cooperatives/:id/multisig-setup — add signers and set threshold
 // Body: { member_ids: [userId, ...], threshold: N }
-router.post('/:id/multisig-setup', auth, async (req, res) => {
+router.post('/:id/multisig-setup', auth, validate.cooperativeMultisig, async (req, res) => {
   const coopId = parseInt(req.params.id, 10);
   const { member_ids, threshold } = req.body;
 
@@ -184,7 +185,7 @@ router.post('/:id/multisig-setup', auth, async (req, res) => {
 
 // POST /api/cooperatives/:id/transactions — initiate a pending multi-sig transaction
 // Body: { destination, amount, memo }
-router.post('/:id/transactions', auth, async (req, res) => {
+router.post('/:id/transactions', auth, validate.cooperativeTransaction, async (req, res) => {
   const coopId = parseInt(req.params.id, 10);
   const { destination, memo } = req.body;
   const amount = parseFloat(req.body.amount);
@@ -247,7 +248,11 @@ router.post('/:id/transactions', auth, async (req, res) => {
       [req.user.id]
     );
     if (initiatorRows[0]?.stellar_secret_key) {
-      tx.sign(StellarSdk.Keypair.fromSecret(await decryptUserSecretKey(initiatorRows[0].stellar_secret_key)));
+      tx.sign(
+        StellarSdk.Keypair.fromSecret(
+          await decryptUserSecretKey(initiatorRows[0].stellar_secret_key)
+        )
+      );
     }
 
     xdr = tx.toXDR();
@@ -321,7 +326,9 @@ router.post('/transactions/:id/sign', auth, async (req, res) => {
   let tx;
   try {
     tx = new StellarSdk.Transaction(ptx.xdr, networkPassphrase);
-    tx.sign(StellarSdk.Keypair.fromSecret(await decryptUserSecretKey(userRows[0].stellar_secret_key)));
+    tx.sign(
+      StellarSdk.Keypair.fromSecret(await decryptUserSecretKey(userRows[0].stellar_secret_key))
+    );
   } catch (e) {
     return err(res, 400, `Could not sign: ${e.message}`, 'sign_error');
   }
@@ -403,7 +410,7 @@ router.post('/:id/leave', auth, async (req, res) => {
 
 // PATCH /api/cooperatives/:id/royalty — set cooperative royalty rate (admin-only)
 // Body: { royalty_bps: N }  where N is 0–2000 (max 20%)
-router.patch('/:id/royalty', auth, async (req, res) => {
+router.patch('/:id/royalty', auth, validate.cooperativeRoyalty, async (req, res) => {
   const coopId = parseInt(req.params.id, 10);
   const { royalty_bps } = req.body;
 
@@ -433,7 +440,7 @@ router.patch('/:id/royalty', auth, async (req, res) => {
 });
 
 // PATCH /api/cooperatives/:id/admin — transfer admin role
-router.patch('/:id/admin', auth, async (req, res) => {
+router.patch('/:id/admin', auth, validate.cooperativeAdmin, async (req, res) => {
   const coopId = parseInt(req.params.id, 10);
   const { new_admin_id } = req.body;
   if (!new_admin_id) return err(res, 400, 'new_admin_id is required', 'validation_error');
