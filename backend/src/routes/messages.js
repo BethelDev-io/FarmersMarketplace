@@ -6,6 +6,11 @@ const { issueStreamTicket } = require('../middleware/sseAuth');
 const { err } = require('../middleware/error');
 const { sanitizeText } = require('../utils/sanitize');
 const realtime = require('../utils/realtime');
+const createPerUserRateLimiter = require('../middleware/rateLimitPerUser');
+
+// BE-38: Message rate limits (30 messages/min, 200/day)
+const messageRateLimitPerMinute = createPerUserRateLimiter(30, 60 * 1000);
+const messageRateLimitPerDay = createPerUserRateLimiter(200, 24 * 60 * 60 * 1000);
 
 // SSE client registry: userId -> Set of response objects (local to this process)
 const sseClients = new Map();
@@ -29,12 +34,26 @@ realtime.subscribe('messages', (event, data) => {
 });
 
 // POST /api/messages — send a message
-router.post('/', auth, async (req, res) => {
+router.post('/', auth, messageRateLimitPerMinute, messageRateLimitPerDay, async (req, res) => {
   const { receiver_id, product_id, content } = req.body;
   const sender_id = req.user.id;
 
   if (!receiver_id || !content)
     return err(res, 400, 'receiver_id and content are required', 'validation_error');
+
+  // BE-38: Check if sender is blocked by receiver
+  const { rows: blockRows } = await db.query(
+    'SELECT id FROM message_blocks WHERE user_id = $1 AND blocked_user_id = $2',
+    [receiver_id, sender_id]
+  );
+  if (blockRows[0]) {
+    return err(res, 403, 'You are blocked by this user', 'blocked');
+  }
+
+  // BE-38: Enforce 2,000 character limit
+  if (content.length > 2000) {
+    return err(res, 400, 'Message content cannot exceed 2,000 characters', 'validation_error');
+  }
 
   const sanitizedContent = sanitizeText(content);
   if (!sanitizedContent)
@@ -46,6 +65,23 @@ router.post('/', auth, async (req, res) => {
   if (!receiverRows[0]) return err(res, 404, 'Receiver not found', 'not_found');
   if (sender_id === receiver_id)
     return err(res, 400, 'Cannot send message to yourself', 'validation_error');
+
+  // BE-38: Authorization check - buyer can only message farmers with active listings or existing orders
+  if (req.user.role === 'buyer') {
+    const { rows: authRows } = await db.query(
+      `SELECT 1 FROM (
+        SELECT 1 FROM products WHERE farmer_id = $1 AND active = true
+        UNION
+        SELECT 1 FROM orders o
+        JOIN products p ON o.product_id = p.id
+        WHERE o.buyer_id = $2 AND p.farmer_id = $1
+      ) AS authorized LIMIT 1`,
+      [receiver_id, sender_id]
+    );
+    if (!authRows[0]) {
+      return err(res, 403, 'You can only message farmers with active listings or with whom you have orders', 'unauthorized_messaging');
+    }
+  }
 
   try {
     const { rows } = await db.query(
@@ -249,3 +285,82 @@ router.get('/:userId', auth, async (req, res) => {
 });
 
 module.exports = router;
+
+// POST /api/messages/block — block a user from sending messages
+router.post('/block', auth, async (req, res) => {
+  const { blocked_user_id } = req.body;
+  if (!blocked_user_id) return err(res, 400, 'blocked_user_id is required', 'validation_error');
+  if (blocked_user_id === req.user.id)
+    return err(res, 400, 'Cannot block yourself', 'validation_error');
+
+  try {
+    await db.query(
+      'INSERT INTO message_blocks (user_id, blocked_user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      [req.user.id, blocked_user_id]
+    );
+    res.json({ success: true, message: 'User blocked successfully' });
+  } catch (e) {
+    err(res, 500, 'Failed to block user: ' + e.message, 'server_error');
+  }
+});
+
+// DELETE /api/messages/block/:userId — unblock a user
+router.delete('/block/:userId', auth, async (req, res) => {
+  const blockedUserId = parseInt(req.params.userId, 10);
+  if (isNaN(blockedUserId)) return err(res, 400, 'Invalid user ID', 'validation_error');
+
+  try {
+    await db.query(
+      'DELETE FROM message_blocks WHERE user_id = $1 AND blocked_user_id = $2',
+      [req.user.id, blockedUserId]
+    );
+    res.json({ success: true, message: 'User unblocked successfully' });
+  } catch (e) {
+    err(res, 500, 'Failed to unblock user: ' + e.message, 'server_error');
+  }
+});
+
+// GET /api/messages/blocked — list blocked users
+router.get('/blocked', auth, async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT b.id, b.blocked_user_id, u.name, u.avatar_url, b.created_at
+       FROM message_blocks b
+       JOIN users u ON b.blocked_user_id = u.id
+       WHERE b.user_id = $1
+       ORDER BY b.created_at DESC`,
+      [req.user.id]
+    );
+    res.json({ success: true, data: rows });
+  } catch (e) {
+    err(res, 500, 'Failed to fetch blocked users: ' + e.message, 'server_error');
+  }
+});
+
+// POST /api/messages/:messageId/report — report a message
+router.post('/:messageId/report', auth, async (req, res) => {
+  const messageId = parseInt(req.params.messageId, 10);
+  if (isNaN(messageId)) return err(res, 400, 'Invalid message ID', 'validation_error');
+
+  const { reason } = req.body;
+
+  // Verify the message exists and the reporter is the receiver
+  const { rows: msgRows } = await db.query(
+    'SELECT id, receiver_id FROM messages WHERE id = $1',
+    [messageId]
+  );
+  if (!msgRows[0]) return err(res, 404, 'Message not found', 'not_found');
+  if (msgRows[0].receiver_id !== req.user.id) {
+    return err(res, 403, 'You can only report messages sent to you', 'forbidden');
+  }
+
+  try {
+    await db.query(
+      'INSERT INTO message_reports (message_id, reporter_id, reason) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+      [messageId, req.user.id, reason || null]
+    );
+    res.json({ success: true, message: 'Message reported successfully' });
+  } catch (e) {
+    err(res, 500, 'Failed to report message: ' + e.message, 'server_error');
+  }
+});

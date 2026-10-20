@@ -5,6 +5,7 @@ const auth = require('../middleware/auth');
 const requireAdmin = require('../middleware/requireAdmin');
 const { sendPayment } = require('../utils/stellar');
 const { decryptUserSecretKey } = require('../utils/crypto');
+const { writeAuditLog } = require('../utils/auditLog');
 
 router.use(auth, requireAdmin);
 
@@ -72,6 +73,17 @@ router.post('/returns/:id/approve', async (req, res) => {
       ret.id,
     ]);
 
+    // BE-40: Audit log
+    await writeAuditLog({
+      adminId: req.user.id,
+      action: 'approve_return',
+      targetType: 'return',
+      targetId: ret.id,
+      before: { status: 'pending' },
+      after: { status: 'approved', refund_tx_hash: txHash },
+      req,
+    });
+
     res.json({ message: 'Return approved and refund issued', refundAmount, txHash });
   } catch (error) {
     res.status(500).json({ error: 'Refund transaction failed: ' + error.message });
@@ -88,6 +100,18 @@ router.post('/returns/:id/reject', async (req, res) => {
   if (ret.status !== 'pending') return res.status(400).json({ error: `Return already ${ret.status}` });
 
   await db.query('UPDATE returns SET status = $1 WHERE id = $2', ['rejected', ret.id]);
+
+  // BE-40: Audit log
+  await writeAuditLog({
+    adminId: req.user.id,
+    action: 'reject_return',
+    targetType: 'return',
+    targetId: ret.id,
+    before: { status: 'pending' },
+    after: { status: 'rejected' },
+    req,
+  });
+
   res.json({ message: 'Return request rejected' });
 });
 
@@ -219,7 +243,20 @@ router.delete('/users/:id', async (req, res) => {
   const { rows } = await db.query('SELECT * FROM users WHERE id = $1', [userId]);
   if (!rows[0]) return res.status(404).json({ error: 'User not found' });
 
+  const before = { active: rows[0].active };
   await db.query('UPDATE users SET active = false WHERE id = $1', [userId]);
+
+  // BE-40: Audit log
+  await writeAuditLog({
+    adminId: req.user.id,
+    action: 'deactivate_user',
+    targetType: 'user',
+    targetId: userId,
+    before,
+    after: { active: false },
+    req,
+  });
+
   res.json({ message: 'User deactivated successfully' });
 });
 
@@ -376,6 +413,37 @@ router.get('/analytics/creator-earnings', async (_req, res) => {
       total_platform_fee_xlm: Number(totalsRows[0].total_platform_fee),
       time_series: [...byDay.values()],
     },
+  });
+});
+
+// BE-38: GET /api/admin/message-reports — view reported messages
+router.get('/message-reports', async (req, res) => {
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 20));
+  const offset = (page - 1) * limit;
+
+  const { rows: countRows } = await db.query('SELECT COUNT(*) as count FROM message_reports');
+  const total = Number(countRows[0].count);
+
+  const { rows } = await db.query(
+    `SELECT 
+      r.id, r.message_id, r.reason, r.created_at,
+      m.content as message_content, m.created_at as message_created_at,
+      sender.id as sender_id, sender.name as sender_name, sender.email as sender_email,
+      reporter.id as reporter_id, reporter.name as reporter_name, reporter.email as reporter_email
+     FROM message_reports r
+     JOIN messages m ON r.message_id = m.id
+     JOIN users sender ON m.sender_id = sender.id
+     JOIN users reporter ON r.reporter_id = reporter.id
+     ORDER BY r.created_at DESC
+     LIMIT $1 OFFSET $2`,
+    [limit, offset]
+  );
+
+  res.json({
+    success: true,
+    data: rows,
+    pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   });
 });
 
