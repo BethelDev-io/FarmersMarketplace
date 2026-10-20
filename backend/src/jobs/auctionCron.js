@@ -133,6 +133,17 @@ async function closeExpiredAuctions() {
     }
 
     try {
+      // Claim the auction before touching Stellar. FOR UPDATE in the bid path
+      // prevents bid races; this conditional claim prevents settlement races
+      // between concurrent cron workers.
+      if (db.isPostgres) {
+        const claim = await db.query(
+          `UPDATE auctions SET winner_notified = 2
+           WHERE id = $1 AND status = 'active' AND COALESCE(winner_notified, 0) = 0
+           RETURNING id`, [auction.id]
+        );
+        if (!claim.rows.length) continue;
+      }
       const txHash = await sendPayment({
         senderSecret: await decryptUserSecretKey(winner.buyer_secret),
         receiverPublicKey: auction.farmer_wallet,
@@ -147,7 +158,7 @@ async function closeExpiredAuctions() {
                winner_id = $1,
                winner_notified = 1,
                closed_at = NOW()
-           WHERE id = $2`,
+           WHERE id = $2 AND (winner_notified = 2 OR winner_notified = 0)`,
           [winner.buyer_id, auction.id]
         );
 
