@@ -42,6 +42,7 @@ const {
   claimIdempotencyKey,
   releaseIdempotencyKey,
   cacheResponse,
+  hashRequestBody,
 } = require('../utils/idempotency');
 const { getTierPrice, reserveCoupon, releaseCoupon } = require('./coupons');
 const { checkGeoFence, checkCoordinateGeoFence } = require('../utils/geocheck');
@@ -367,20 +368,26 @@ router.post('/', auth, requireEmailVerified, orderRateLimit, validate.order, asy
   // Resolve path-payment asset from flat fields (preferred) or legacy nested object
   const _sourceAssetCode = source_asset_code || (source_asset && source_asset.code);
   const _sourceAssetIssuer = source_asset_issuer || (source_asset && source_asset.issuer);
-  const idempotencyKey = req.headers['x-idempotency-key'];
+  const idempotencyKey = req.headers['idempotency-key'] || req.headers['x-idempotency-key'];
 
   if (!idempotencyKey || !UUID_V4_RE.test(idempotencyKey)) {
     return err(res, 400, 'X-Idempotency-Key header must be a valid UUID v4', 'invalid_idempotency_key');
   }
 
+  const requestHash = hashRequestBody(req.body);
+
   try {
-    const claim = await claimIdempotencyKey(req.user.id, idempotencyKey);
+    const claim = await claimIdempotencyKey(req.user.id, idempotencyKey, undefined, requestHash);
+    if (claim.status === 'reused') {
+      return err(res, 422, 'Idempotency-Key was already used with a different request body', 'idempotency_key_reused');
+    }
     if (claim.status === 'cached') {
       const cached = claim.response;
+      res.set('Idempotent-Replayed', 'true');
       return res.status(cached._status || (cached.success ? 201 : 402)).json(cached);
     }
     if (claim.status === 'in_progress') {
-      return err(res, 409, 'An order with this idempotency key is still processing', 'idempotency_in_progress');
+      return err(res, 409, 'An order with this idempotency key is still processing', 'request_in_progress');
     }
     res.once('finish', () => {
       releaseIdempotencyKey(idempotencyKey, req.user.id).catch((error) => {
@@ -657,7 +664,7 @@ router.post('/', auth, requireEmailVerified, orderRateLimit, validate.order, asy
       paymentLink,
       message: 'Order created for SEP-0007 payment',
     };
-    if (idempotencyKey) await cacheResponse(idempotencyKey, { ...responseData, _status: 200 });
+    if (idempotencyKey) await cacheResponse(idempotencyKey, { ...responseData, _status: 200 }, undefined, req.user.id);
   const stockUpdate = await db.query(
     `UPDATE products
      SET quantity = quantity - $1
@@ -857,7 +864,7 @@ router.post('/', auth, requireEmailVerified, orderRateLimit, validate.order, asy
       claimableBalanceId: balanceId,
       sourceAsset: usePathPayment ? _sourceAssetCode : 'XLM',
     };
-    if (idempotencyKey) await cacheResponse(idempotencyKey, { ...responseData, _status: 200 });
+    if (idempotencyKey) await cacheResponse(idempotencyKey, { ...responseData, _status: 200 }, undefined, req.user.id);
     return res.status(200).json(responseData);
     if (idempotencyKey) await cacheResponse(idempotencyKey, { ...responseData, _status: 201 }, undefined, req.user.id);
     return res.status(201).json(responseData);
