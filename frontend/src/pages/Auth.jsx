@@ -4,7 +4,7 @@ import { Helmet } from 'react-helmet-async';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { validateLogin, validateRegister, validatePassword } from '../utils/validation';
-import { getErrorMessage } from '../utils/errorMessages';
+import { getErrorMessage, getFieldErrors } from '../utils/errorMessages';
 import { useTranslation } from 'react-i18next';
 
 const s = {
@@ -125,6 +125,7 @@ export function LoginPage() {
       navigate(user.role === 'farmer' ? '/dashboard' : '/marketplace', { replace: true });
       navigate(getPostLoginPath(location.state, user));
     } catch (err) {
+      setErrors(getFieldErrors(err));
       setFormError(getErrorMessage(err));
       setForm(f => ({ ...f, password: '' }));
       passwordRef.current?.focus();
@@ -273,6 +274,7 @@ export function RegisterPage() {
       login(token, user);
       navigate(user.role === 'farmer' ? '/dashboard' : '/marketplace');
     } catch (err) {
+      setErrors(getFieldErrors(err));
       setFormError(getErrorMessage(err));
     }
   }

@@ -285,6 +285,23 @@
     "expiresToday": "Inaisha leo",
     "daysLeft": "siku {{days}} zimesalia"
   },
+  "apiErrors": {
+    "generic": "Hitilafu isiyotarajiwa imetokea. Tafadhali jaribu tena.",
+    "insufficient_stock": "Bidhaa hii haina hisa ya kutosha kwa agizo lako.",
+    "invalid_coupon": "Msimbo huo wa kuponi si sahihi.",
+    "coupon_expired": "Kuponi hiyo imeisha muda wake.",
+    "rate_limited": "Maombi mengi mno. Tafadhali subiri kidogo ujaribu tena.",
+    "rate_limited_retry": "Maombi mengi mno. Tafadhali jaribu tena baada ya sekunde {{seconds}}.",
+    "op_underfunded": "Salio la XLM halitoshi kwa muamala huu.",
+    "token_reused": "Kipindi chako si halali tena. Tafadhali ingia tena.",
+    "validation_error": "Baadhi ya sehemu si sahihi. Tafadhali kagua fomu ujaribu tena.",
+    "invalid_credentials": "Barua pepe au nenosiri si sahihi.",
+    "invalid_destination": "Anwani ya mpokeaji si sahihi.",
+    "invalid_code": "Msimbo wa uthibitisho si sahihi.",
+    "totp_required": "Weka msimbo wa uthibitishaji wa hatua mbili ili kuendelea.",
+    "not_found": "Hatukuweza kupata ulichokuwa ukitafuta."
+  }
+}
   "notFound": {
     "title": "404 - Ukurasa Haupatikani",
     "body": "Ukurasa unaoutafuta haupo. Huenda umehamishwa au kufutwa.",

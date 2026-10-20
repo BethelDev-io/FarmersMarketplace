@@ -4,6 +4,27 @@
  * actionable messages grouped by domain.
  */
 
+import i18n from 'i18next';
+
+export const EN_API_ERRORS = {
+  generic: 'An unexpected error occurred. Please try again.',
+  insufficient_stock: "This product doesn't have enough stock for your order.",
+  invalid_coupon: 'That coupon code is not valid.',
+  coupon_expired: 'That coupon has expired.',
+  rate_limited: 'Too many requests. Please wait a moment and try again.',
+  rate_limited_retry: 'Too many requests. Please try again in {{seconds}} seconds.',
+  op_underfunded: 'Insufficient XLM balance for this transaction.',
+  token_reused: 'Your session is no longer valid. Please log in again.',
+  validation_error: 'Some fields are invalid. Please check the form and try again.',
+  invalid_credentials: 'Incorrect email or password. Please try again.',
+  invalid_destination: 'Invalid destination address. Please double-check the Stellar address.',
+  invalid_code: 'That verification code is incorrect.',
+  totp_required: 'Enter your two-factor authentication code to continue.',
+  not_found: "We couldn't find what you were looking for.",
+};
+
+const CODE_FALLBACKS = EN_API_ERRORS;
+
 const ERROR_MAP = [
   // --- Auth ---
   { match: /invalid credentials|invalid email or password|wrong password/i,
@@ -83,18 +104,88 @@ const ERROR_MAP = [
 ];
 
 /**
+ * Stable backend error codes (BE-23) → i18n keys under `apiErrors`.
+ * Codes are matched before any message pattern.
+ */
+export const CODE_TO_I18N_KEY = {
+  insufficient_stock: 'apiErrors.insufficient_stock',
+  invalid_coupon: 'apiErrors.invalid_coupon',
+  coupon_expired: 'apiErrors.coupon_expired',
+  rate_limited: 'apiErrors.rate_limited',
+  op_underfunded: 'apiErrors.op_underfunded',
+  insufficient_balance: 'apiErrors.op_underfunded',
+  token_reused: 'apiErrors.token_reused',
+  validation_error: 'apiErrors.validation_error',
+  invalid_credentials: 'apiErrors.invalid_credentials',
+  invalid_destination: 'apiErrors.invalid_destination',
+  invalid_code: 'apiErrors.invalid_code',
+  totp_required: 'apiErrors.totp_required',
+  not_found: 'apiErrors.not_found',
+};
+
+const GENERIC_KEY = 'apiErrors.generic';
+const GENERIC_FALLBACK = 'An unexpected error occurred. Please try again.';
+
+function translate(key, fallback, options) {
+  try {
+    if (i18n?.isInitialized) {
+      const out = i18n.t(key, { defaultValue: fallback, ...options });
+      if (out && out !== key) return out;
+    }
+  } catch { /* i18n unavailable (e.g. tests) */ }
+  return fallback.replace(/\{\{(\w+)\}\}/g, (_, k) => options?.[k] ?? '');
+}
+
+/** Seconds until the rate limit resets, read from the RateLimit-Reset header. */
+export function getRetryAfterSeconds(err) {
+  const n = Number(err?.retryAfter);
+  return Number.isFinite(n) && n > 0 ? Math.ceil(n) : null;
+}
+
+/**
+ * Field-level validation errors from a `validation_error` response, as
+ * `{ fieldName: message }`. Accepts both `[{ field, message }]` and
+ * `{ field: message }` shapes.
+ */
+export function getFieldErrors(err) {
+  const details = err?.details;
+  if (!details) return {};
+  if (Array.isArray(details)) {
+    return details.reduce((acc, d) => {
+      const field = d?.field ?? (Array.isArray(d?.path) ? d.path.join('.') : d?.path);
+      if (field && !acc[field]) acc[field] = d.message || String(d);
+      return acc;
+    }, {});
+  }
+  if (typeof details === 'object') return { ...details };
+  return {};
+}
+
+/**
  * Returns a human-friendly error message for any error thrown by the API.
- * Falls back to the original message if no pattern matches.
+ * Maps by `err.code` first, then by known message patterns, and otherwise
+ * falls back to a generic message so server internals are never shown.
  *
  * @param {Error|unknown} err
  * @returns {string}
  */
 export function getErrorMessage(err) {
+  const code = err?.code;
+  if (code && CODE_TO_I18N_KEY[code]) {
+    const key = CODE_TO_I18N_KEY[code];
+    if (code === 'rate_limited') {
+      const seconds = getRetryAfterSeconds(err);
+      if (seconds) {
+        return translate('apiErrors.rate_limited_retry', `Too many requests. Please try again in ${seconds} seconds.`, { seconds });
+      }
+    }
+    return translate(key, CODE_FALLBACKS[code] || GENERIC_FALLBACK);
+  }
   const raw = err?.message || String(err || '');
   for (const { match, message } of ERROR_MAP) {
     if (match.test(raw)) return message;
   }
-  return raw || 'An unexpected error occurred. Please try again.';
+  return translate(GENERIC_KEY, GENERIC_FALLBACK);
 }
 
 // Keep backward-compat alias for existing Stellar-specific usages

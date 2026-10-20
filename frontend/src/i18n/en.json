@@ -292,6 +292,21 @@
     "expiresToday": "Expires today",
     "daysLeft": "{{days}}d left"
   },
+  "apiErrors": {
+    "generic": "An unexpected error occurred. Please try again.",
+    "insufficient_stock": "This product doesn't have enough stock for your order.",
+    "invalid_coupon": "That coupon code is not valid.",
+    "coupon_expired": "That coupon has expired.",
+    "rate_limited": "Too many requests. Please wait a moment and try again.",
+    "rate_limited_retry": "Too many requests. Please try again in {{seconds}} seconds.",
+    "op_underfunded": "Insufficient XLM balance for this transaction.",
+    "token_reused": "Your session is no longer valid. Please log in again.",
+    "validation_error": "Some fields are invalid. Please check the form and try again.",
+    "invalid_credentials": "Incorrect email or password. Please try again.",
+    "invalid_destination": "Invalid destination address. Please double-check the Stellar address.",
+    "invalid_code": "That verification code is incorrect.",
+    "totp_required": "Enter your two-factor authentication code to continue.",
+    "not_found": "We couldn't find what you were looking for."
   "notFound": {
     "title": "404 - Page Not Found",
     "body": "The page you're looking for doesn't exist. It may have been moved or deleted.",

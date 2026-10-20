@@ -267,6 +267,24 @@
     "andMore": "...و {{n}} أخطاء أخرى"
   },
   "pagination": {
+    "resultCount_one": "Ù†ØªÙŠØ¬Ø© {{count}}",
+    "resultCount_other": "{{count}} Ù†ØªÙŠØ¬Ø©"
+  },
+  "apiErrors": {
+    "generic": "حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.",
+    "insufficient_stock": "لا يتوفر مخزون كافٍ من هذا المنتج لطلبك.",
+    "invalid_coupon": "رمز القسيمة غير صالح.",
+    "coupon_expired": "انتهت صلاحية هذه القسيمة.",
+    "rate_limited": "طلبات كثيرة جدًا. يرجى الانتظار قليلًا ثم المحاولة.",
+    "rate_limited_retry": "طلبات كثيرة جدًا. يرجى المحاولة بعد {{seconds}} ثانية.",
+    "op_underfunded": "رصيد XLM غير كافٍ لهذه المعاملة.",
+    "token_reused": "جلستك لم تعد صالحة. يرجى تسجيل الدخول مرة أخرى.",
+    "validation_error": "بعض الحقول غير صالحة. يرجى مراجعة النموذج.",
+    "invalid_credentials": "البريد الإلكتروني أو كلمة المرور غير صحيحة.",
+    "invalid_destination": "عنوان الوجهة غير صالح.",
+    "invalid_code": "رمز التحقق غير صحيح.",
+    "totp_required": "أدخل رمز المصادقة الثنائية للمتابعة.",
+    "not_found": "لم نتمكن من العثور على ما تبحث عنه."
     "resultCount_zero": "لا نتائج",
     "resultCount_one": "نتيجة واحدة",
     "resultCount_two": "نتيجتان",

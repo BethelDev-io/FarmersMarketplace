@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import NotFound from './NotFound';
 
+import { getErrorMessage } from '../utils/errorMessages';
 const PAGE_SIZE = 9;
 
 const s = {
@@ -140,7 +141,7 @@ function StreamModal({ farmerId, onClose }) {
       });
       setMsg({ type: 'ok', text: 'Payment stream started.' });
     } catch (e) {
-      setMsg({ type: 'err', text: e.message || 'Failed to start payment stream.' });
+      setMsg({ type: 'err', text: getErrorMessage(e) });
     } finally {
       setSubmitting(false);
     }

@@ -401,7 +401,7 @@ export default function ProductDetail() {
       setPathEstimate({ sourceAmount: res.sourceAmount, sourceCode: res.sourceCode });
       setPathEstimateError('');
     }).catch(e => {
-      setPathEstimateError(e.message?.includes('No payment path') ? `No path found from ${sourceAsset.asset_code} to XLM` : e.message);
+      setPathEstimateError(e.message?.includes('No payment path') ? `No path found from ${sourceAsset.asset_code} to XLM` : getErrorMessage(e));
     }).finally(() => setPathEstimateLoading(false));
   }, [sourceAsset, qty, couponResult, product]);
 

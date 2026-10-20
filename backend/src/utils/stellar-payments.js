@@ -483,8 +483,80 @@ async function getOrderBook(
   return { bids, asks, midPrice };
 }
 
+/**
+ * Build a Stellar memo of the requested type. Throws `invalid_memo` on bad input.
+ * @param {'text'|'id'|'hash'|undefined} type
+ * @param {string|undefined} value
+ */
+function buildMemo(type, value) {
+  if (value == null || value === '') return StellarSdk.Memo.none();
+  const fail = (msg) => Object.assign(new Error(msg), { code: 'invalid_memo' });
+  switch (type || 'text') {
+    case 'text':
+      if (Buffer.byteLength(String(value), 'utf8') > 28) throw fail('Text memo must be 28 bytes or fewer');
+      return StellarSdk.Memo.text(String(value));
+    case 'id':
+      if (!/^\d{1,20}$/.test(String(value)) || BigInt(value) > 18446744073709551615n) throw fail('ID memo must be an unsigned 64-bit integer');
+      return StellarSdk.Memo.id(String(value));
+    case 'hash':
+      if (!/^[0-9a-fA-F]{64}$/.test(String(value))) throw fail('Hash memo must be 32 bytes (64 hex characters)');
+      return StellarSdk.Memo.hash(String(value));
+    default:
+      throw fail('Unsupported memo type');
+  }
+}
+
+/** Whether a Stellar account exists on the network. */
+async function accountExists(publicKey) {
+  try {
+    await server.loadAccount(publicKey);
+    return true;
+  } catch (error) {
+    if (error?.response?.status === 404) return false;
+    throw error;
+  }
+}
+
+/**
+ * Withdraw XLM to an external G… or muxed M… address. Uses `createAccount`
+ * when the destination does not exist yet (requires >= 1 XLM).
+ * @returns {Promise<{ hash: string, created: boolean }>}
+ */
+async function sendWithdrawal({ senderSecret, destination, amount, memo, memoType }) {
+  const senderKeypair = StellarSdk.Keypair.fromSecret(senderSecret);
+  const senderAccount = await server.loadAccount(senderKeypair.publicKey());
+  const isMuxed = StellarSdk.StrKey.isValidMed25519PublicKey(destination);
+  const basePublicKey = isMuxed
+    ? StellarSdk.MuxedAccount.fromAddress(destination, '0').baseAccount().accountId()
+    : destination;
+
+  const exists = await accountExists(basePublicKey);
+  if (!exists && isMuxed) {
+    throw Object.assign(new Error('Muxed destination account does not exist'), { code: 'destination_not_found' });
+  }
+  if (!exists && amount < 1) {
+    throw Object.assign(new Error('Destination account does not exist; at least 1 XLM is required to create it'), { code: 'create_account_min' });
+  }
+
+  const operation = exists
+    ? StellarSdk.Operation.payment({ destination, asset: StellarSdk.Asset.native(), amount: amount.toFixed(7) })
+    : StellarSdk.Operation.createAccount({ destination, startingBalance: amount.toFixed(7) });
+
+  const tx = new StellarSdk.TransactionBuilder(senderAccount, { fee: StellarSdk.BASE_FEE, networkPassphrase })
+    .addOperation(operation)
+    .addMemo(buildMemo(memoType, memo))
+    .setTimeout(30)
+    .build();
+  tx.sign(senderKeypair);
+  const result = await server.submitTransaction(tx);
+  return { hash: result.hash, created: !exists };
+}
+
 module.exports = {
   sendPayment,
+  sendWithdrawal,
+  accountExists,
+  buildMemo,
   getTransactions,
   findIncomingPaymentsByMemo,
   generatePaymentLink,

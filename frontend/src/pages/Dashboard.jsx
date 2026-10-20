@@ -337,7 +337,7 @@ export default function Dashboard() {
       await api.updateProductTiers(tiersProductId, tiers.map(({ _key, ...tier }) => tier));
       setTiersMsg({ type: 'ok', text: 'Tiers updated successfully' });
     } catch (e) {
-      setTiersMsg({ type: 'error', text: e.message || 'Failed to update tiers' });
+      setTiersMsg({ type: 'error', text: getErrorMessage(e) });
     }
   }
 
@@ -476,7 +476,7 @@ export default function Dashboard() {
         if (d.avatar_url) setAvatarPreview(d.avatar_url);
       }
     } catch (err) {
-      setError(err?.message || 'Failed to load dashboard data');
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -661,7 +661,7 @@ export default function Dashboard() {
         finalImageUrl = res.imageUrl;
       } catch (err) {
         setUploading(false);
-        setMsg({ type: 'err', text: `Image upload failed: ${err.message}` });
+        setMsg({ type: 'err', text: `Image upload failed: ${getErrorMessage(err)}` });
         return;
       }
       setUploading(false);
@@ -703,7 +703,7 @@ export default function Dashboard() {
       removeImage();
       load();
     } catch (err) {
-      setMsg({ type: 'err', text: err.message });
+      setMsg({ type: 'err', text: getErrorMessage(err) });
     }
   }
 
@@ -801,7 +801,7 @@ export default function Dashboard() {
       }));
       load();
     } catch (e) {
-      setSalesMsg((prev) => ({ ...prev, [orderId]: { type: 'err', text: e.message } }));
+      setSalesMsg((prev) => ({ ...prev, [orderId]: { type: 'err', text: getErrorMessage(e) } }));
     }
   }
 
@@ -811,7 +811,7 @@ export default function Dashboard() {
       setSalesMsg((prev) => ({ ...prev, [orderId]: { type: 'ok', text: 'Return approved — refund sent' } }));
       load();
     } catch (e) {
-      setSalesMsg((prev) => ({ ...prev, [orderId]: { type: 'err', text: e.message } }));
+      setSalesMsg((prev) => ({ ...prev, [orderId]: { type: 'err', text: getErrorMessage(e) } }));
     }
   }
 
@@ -823,7 +823,7 @@ export default function Dashboard() {
       setSalesMsg((prev) => ({ ...prev, [orderId]: { type: 'ok', text: 'Return rejected' } }));
       load();
     } catch (e) {
-      setSalesMsg((prev) => ({ ...prev, [orderId]: { type: 'err', text: e.message } }));
+      setSalesMsg((prev) => ({ ...prev, [orderId]: { type: 'err', text: getErrorMessage(e) } }));
     }
   }
 
@@ -849,7 +849,7 @@ export default function Dashboard() {
       setBundleDiscounts(res.data ?? []);
       setBdMsg({ type: 'ok', text: editingId ? 'Discount tier updated.' : 'Discount tier added.' });
     } catch (err) {
-      setBdMsg({ type: 'error', text: err.message });
+      setBdMsg({ type: 'error', text: getErrorMessage(err) });
     }
   }
 
@@ -866,7 +866,7 @@ export default function Dashboard() {
       const res = await api.getBundleDiscounts();
       setBundleDiscounts(res.data ?? []);
     } catch (err) {
-      setBdMsg({ type: 'error', text: err.message });
+      setBdMsg({ type: 'error', text: getErrorMessage(err) });
     }
   }
 
@@ -878,7 +878,7 @@ export default function Dashboard() {
       else showToast(`Signature added (${res.signaturesCollected}/${res.required} required)`, 'info');
       load();
     } catch (e) {
-      showToast(`Error: ${e.message}`, 'error');
+      showToast(`Error: ${getErrorMessage(e)}`, 'error');
     } finally {
       setSigningTxId(null);
     }
