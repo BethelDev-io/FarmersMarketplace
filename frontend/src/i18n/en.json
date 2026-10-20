@@ -352,5 +352,27 @@
     "orderUpdates": "Order Updates",
     "promotions": "Promotions & Offers",
     "newsletter": "Newsletter"
+  },
+  "offline": {
+    "banner": "You are offline. Browsing cached products only — payments, wallet sends and orders are disabled.",
+    "willPublish": "Will publish when back online",
+    "publishedQueued": "Your listing \"{{name}}\" was published.",
+    "publishFailed": "Could not publish \"{{name}}\": {{error}}"
+  },
+  "upload": {
+    "progress": "Upload progress",
+    "cancel": "Cancel",
+    "retry": "Retry upload",
+    "done": "Upload complete",
+    "notImage": "Please choose an image file (JPEG, PNG or WebP).",
+    "generateFailed": "Failed to generate image.",
+    "tooLarge": "Image exceeds the 5 MB limit.",
+    "unsupported": "Unsupported format. Use JPEG, PNG, or WebP."
+  },
+  "feedPagination": {
+    "loadMore": "Load more",
+    "retry": "Retry",
+    "loadError": "Could not load more items.",
+    "empty": "Nothing here yet."
   }
 }

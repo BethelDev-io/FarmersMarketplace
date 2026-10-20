@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { api } from '../api/client';
+import { clearDraft, queueProduct } from '../utils/draftOutbox';
+import { compressCanvas, isImageFile } from '../utils/imageCompression';
 import { useXlmRate } from '../utils/useXlmRate';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from 'react-i18next';
@@ -542,8 +544,8 @@ export default function Dashboard() {
 
   function validateAndSetImage(file) {
     setImageErr('');
-    if (!ALLOWED_TYPES.includes(file.type)) {
-      setImageErr('Only JPEG, PNG, or WebP images are allowed.');
+    if (!isImageFile(file) || !ALLOWED_TYPES.includes(file.type)) {
+      setImageErr(t('upload.notImage'));
       return false;
     }
     if (file.size > MAX_SIZE_BYTES) {
@@ -654,10 +656,21 @@ export default function Dashboard() {
     setFormErrors({});
     let finalImageUrl = imageUrl;
 
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      // Offline: queue the listing in the IndexedDB outbox; it publishes on reconnect.
+      await queueProduct({ ...form, price: parseFloat(form.price), quantity: parseInt(form.quantity), image_url: imageUrl || undefined });
+      await clearDraft();
+      setMsg({ type: 'ok', text: t('offline.willPublish') });
+      setForm({ ...EMPTY_FORM });
+      return;
+    }
+
     if (imageFile) {
       setUploading(true);
       try {
-        const res = await api.uploadProductImage(imageFile);
+        const bitmap = typeof createImageBitmap === 'function' ? await createImageBitmap(imageFile).catch(() => null) : null;
+        const upload = bitmap ? await compressCanvas(bitmap) : imageFile;
+        const res = await api.uploadProductImage(upload || imageFile);
         finalImageUrl = res.imageUrl;
       } catch (err) {
         setUploading(false);
@@ -699,6 +712,7 @@ export default function Dashboard() {
         batch_id: Number.isFinite(batchId) ? batchId : undefined,
       });
       setMsg({ type: 'ok', text: t('dashboard.productListedOk') });
+      clearDraft();
       setForm({ ...EMPTY_FORM });
       removeImage();
       load();
