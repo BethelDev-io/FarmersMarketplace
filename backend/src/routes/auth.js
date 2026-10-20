@@ -518,6 +518,68 @@ router.post('/deactivate', auth, async (req, res) => {
   });
 });
 
+async function exportAccountData(userId) {
+  const [profile, addresses, orders, reviews, favorites] = await Promise.all([
+    db.query(
+      `SELECT id, name, email, role, stellar_public_key, active, created_at, deactivated_at, anonymized_at
+       FROM users WHERE id = $1`,
+      [userId]
+    ),
+    db.query('SELECT * FROM addresses WHERE user_id = $1 ORDER BY id', [userId]),
+    db.query(
+      `SELECT o.id, o.product_id, o.quantity, o.total_price, o.status, o.stellar_tx_hash, o.created_at,
+              p.name AS product_name
+       FROM orders o LEFT JOIN products p ON p.id = o.product_id
+       WHERE o.buyer_id = $1 ORDER BY o.created_at DESC`,
+      [userId]
+    ),
+    db.query(
+      `SELECT id, order_id, product_id, rating, comment, created_at
+       FROM reviews WHERE buyer_id = $1 ORDER BY created_at DESC`,
+      [userId]
+    ),
+    db.query('SELECT * FROM favorites WHERE buyer_id = $1 ORDER BY id', [userId]),
+  ]);
+  if (!profile.rows[0]) return null;
+  return {
+    exportedAt: new Date().toISOString(),
+    profile: profile.rows[0],
+    addresses: addresses.rows,
+    orders: orders.rows,
+    reviews: reviews.rows,
+    favorites: favorites.rows,
+  };
+}
+
+// GET /api/auth/export and /api/auth/account/export — self-service GDPR export
+const accountExportHandler = async (req, res) => {
+  const data = await exportAccountData(req.user.id);
+  if (!data) return err(res, 404, 'User not found', 'not_found');
+  res.setHeader('Content-Disposition', `attachment; filename="farmers-marketplace-data-${req.user.id}.json"`);
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Cache-Control', 'private, no-store');
+  return res.json(data);
+};
+router.get('/export', auth, accountExportHandler);
+router.get('/account/export', auth, accountExportHandler);
+
+// POST /api/auth/account/deletion-request — revoke sessions and schedule anonymization
+router.post('/account/deletion-request', auth, async (req, res) => {
+  const { rows } = await db.query('SELECT id FROM users WHERE id = $1', [req.user.id]);
+  if (!rows[0]) return err(res, 404, 'User not found', 'not_found');
+
+  await db.query(
+    'UPDATE users SET active = 0, deactivated_at = CURRENT_TIMESTAMP WHERE id = $1',
+    [req.user.id]
+  );
+  await db.query('DELETE FROM refresh_tokens WHERE user_id = $1', [req.user.id]);
+  res.clearCookie('refreshToken', { path: '/api/auth' });
+  return res.status(202).json({
+    success: true,
+    message: 'Deletion requested. Personal data will be anonymized after the retention period.',
+  });
+});
+
 // DELETE /api/auth/account — self-service account deletion
 router.delete('/account', auth, async (req, res) => {
   const force = req.query.force === 'true';
