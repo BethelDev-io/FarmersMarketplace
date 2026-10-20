@@ -22,4 +22,21 @@
     "no-unreachable": "error",
     "no-dupe-class-members": "error"
   }
+    "no-restricted-properties": [
+      "error",
+      {
+        "object": "db",
+        "property": "prepare",
+        "message": "Use the asynchronous db.query API instead."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["**/*.test.js", "**/__tests__/**/*.js"],
+      "rules": {
+        "no-restricted-properties": "off"
+      }
+    }
+  ]
 }
