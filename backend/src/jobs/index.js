@@ -56,6 +56,11 @@ const JOBS = [
     run: () => require('./cleanupPushSubscriptions').cleanupExpiredPushSubscriptions(),
   },
   {
+    name: 'idempotency-key-purge',
+    cron: '30 * * * *', // hourly
+    run: () => require('./purgeIdempotencyKeys').purgeIdempotencyKeys(),
+  },
+  {
     name: 'product-expiry-scheduling',
     cron: '0 2 * * *',
     run: () => require('./deactivateExpiredProducts').runSchedulingJob(),

@@ -8,6 +8,18 @@ process.env.NODE_ENV = 'test';
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
 
+jest.mock('../middleware/auth', () => (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    req.user = require('jsonwebtoken').verify(token, process.env.JWT_SECRET);
+    next();
+  } catch {
+    res.status(401).json({ error: 'Unauthorized' });
+  }
+});
+jest.mock('../middleware/requireEmailVerified', () => (_req, _res, next) => next());
+
 const mockDb = jest.requireMock('../db/schema');
 const mockCache = jest.requireMock('../cache');
 
@@ -15,6 +27,7 @@ jest.mock('../cache', () => ({
   get: jest.fn().mockResolvedValue(null),
   set: jest.fn().mockResolvedValue(undefined),
   del: jest.fn().mockResolvedValue(undefined),
+  delByPattern: jest.fn().mockResolvedValue(undefined),
 }));
 
 // Mount only the products router to avoid loading broken sibling route files
@@ -334,8 +347,7 @@ describe('GET /api/products — cache role isolation (#388)', () => {
     expect(buyerRes.body.data[0].low_stock_threshold).toBeUndefined();
 
     // Verify the two cache.set calls used different keys
-    const setCalls = mockCache.set.mock.calls;
-    const keys = setCalls.map(([k]) => k);
+    const keys = mockCache.get.mock.calls.map(([key]) => key);
     expect(keys.some((k) => k.includes(':farmer:'))).toBe(true);
     expect(keys.some((k) => k.includes(':buyer:'))).toBe(true);
   });
@@ -382,6 +394,9 @@ describe('GET /api/products?q= — full-text search (#803)', () => {
     const countCall = mockDb.query.mock.calls[0][0];
     expect(countCall).toMatch(/LIKE/); // seller filter
     mockDb.isPostgres = undefined;
+  });
+});
+
 // #835 — allergens endpoint and PATCH allergen validation
 // ---------------------------------------------------------------------------
 describe('GET /api/products/allergens', () => {

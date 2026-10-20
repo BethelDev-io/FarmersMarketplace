@@ -1,9 +1,9 @@
-// #417 – Wallet.jsx must not have duplicate keys in the s style object
+// #417 – Wallet style object must not have duplicate keys
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
 const src = readFileSync(
-  resolve(__dirname, '../pages/Wallet.jsx'),
+  resolve(__dirname, '../components/wallet/walletStyles.js'),
   'utf8'
 );
 

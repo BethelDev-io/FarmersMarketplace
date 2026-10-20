@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -651,6 +651,112 @@ function ProfileSettings({ showToast }) {
   );
 }
 
+// ── Push Notification Settings ───────────────────────────────────────────────
+function urlB64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const output = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i += 1) output[i] = rawData.charCodeAt(i);
+  return output;
+}
+
+function PushNotificationSettings() {
+  const supported = 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window;
+  const [permission, setPermission] = useState(supported ? Notification.permission : 'unsupported');
+  const [subscribed, setSubscribed] = useState(false);
+  const [busy, setBusy]             = useState(false);
+  const [msg, setMsg]               = useState(null);
+
+  useEffect(() => {
+    if (!supported) return;
+    navigator.serviceWorker.ready
+      .then((reg) => reg.pushManager.getSubscription())
+      .then((subscription) => setSubscribed(!!subscription))
+      .catch(() => {});
+  }, [supported]);
+
+  // Only ever runs from a click, so the browser prompt is user-initiated.
+  async function handleEnable() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const result = await Notification.requestPermission();
+      setPermission(result);
+      if (result !== 'granted') return;
+
+      const reg = await navigator.serviceWorker.ready;
+      let subscription = await reg.pushManager.getSubscription();
+      if (!subscription) {
+        const keyRes = await api.getPushPublicKey();
+        const publicKey = keyRes?.data?.publicKey;
+        if (!publicKey) throw new Error('Push notifications are not configured on the server.');
+        subscription = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlB64ToUint8Array(publicKey),
+        });
+      }
+
+      await api.subscribePush(subscription);
+      setSubscribed(true);
+      setMsg({ type: 'ok', text: 'Push notifications enabled.' });
+    } catch (err) {
+      setMsg({ type: 'err', text: err.message || 'Failed to enable push notifications.' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDisable() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await api.unsubscribePush();
+      const reg = await navigator.serviceWorker.ready;
+      const subscription = await reg.pushManager.getSubscription();
+      if (subscription) await subscription.unsubscribe();
+      setSubscribed(false);
+      setMsg({ type: 'ok', text: 'Push notifications disabled.' });
+    } catch (err) {
+      setMsg({ type: 'err', text: err.message || 'Failed to disable push notifications.' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={s.card}>
+      <div style={s.section}>Notifications</div>
+      {!supported ? (
+        <div style={s.desc}>Push notifications are not supported in this browser.</div>
+      ) : (
+        <>
+          <div style={s.desc}>
+            Browser permission: <strong>{permission}</strong>
+            {permission === 'denied' && (
+              <>. Notifications are blocked for this site. To turn them on, allow notifications in your browser's site settings and reload this page.</>
+            )}
+          </div>
+          {permission !== 'denied' && (subscribed ? (
+            <button style={s.btnGhost} onClick={handleDisable} disabled={busy}>
+              {busy ? 'Working…' : 'Disable push notifications'}
+            </button>
+          ) : (
+            <button style={s.btn} onClick={handleEnable} disabled={busy}>
+              {busy ? 'Working…' : 'Enable push notifications'}
+            </button>
+          ))}
+        </>
+      )}
+      {msg && (
+        <div role={msg.type === 'ok' ? 'status' : 'alert'} style={msg.type === 'ok' ? s.ok : s.err}>
+          {msg.text}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Settings Page ────────────────────────────────────────────────────────
 export default function Settings() {
   const { user } = useAuth();
@@ -663,6 +769,7 @@ export default function Settings() {
       {user ? (
         <>
           <ProfileSettings showToast={showToast} />
+          <PushNotificationSettings />
           <SettingsAccountBody />
           <PasswordChangeForm />
           <TwoFactorAuth />
