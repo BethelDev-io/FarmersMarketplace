@@ -604,3 +604,6 @@ For security vulnerabilities, follow the process in [SECURITY.md](./SECURITY.md)
 
 <!-- handsoff-issue-1525 -->
 - #1525: CT-06: `creator-earnings::claim` lets the caller choose any token, but balances aren't tracked per token
+
+<!-- handsoff-issue-1528 -->
+- #1528: CT-09: Buyer/farmer escrow index stops growing at `MAX_INDEX_ENTRIES` (1,000) — define the behaviour
