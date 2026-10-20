@@ -601,3 +601,6 @@ For security vulnerabilities, follow the process in [SECURITY.md](./SECURITY.md)
 
 <!-- handsoff-issue-1382 -->
 - #1382: Align `api/client.js` with real backend routes: about a dozen methods call endpoints that don't exist
+
+<!-- handsoff-issue-1522 -->
+- #1522: CT-03: Truncated and duplicated function signatures: `resolve_dispute`, `set_coop`, `multisig_release`
