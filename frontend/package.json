@@ -9,6 +9,7 @@
     "test:e2e": "playwright test",
     "test:e2e:report": "playwright show-report",
     "check:bundle-size": "node scripts/check-bundle-size.js",
+    "i18n:check": "node scripts/check-i18n.js",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write . --ignore-path ../.prettierignore"
   },
@@ -35,6 +36,7 @@
     "@vitejs/plugin-react": "^4.2.1",
     "@vitest/coverage-v8": "^3.2.4",
     "eslint": "^9.39.4",
+    "eslint-plugin-i18next": "^6.0.3",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",

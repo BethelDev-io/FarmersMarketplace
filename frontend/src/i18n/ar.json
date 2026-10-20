@@ -208,6 +208,7 @@
     "submitting": "جارٍ الإرسال...",
     "reviewSubmitted": "تم إرسال التقييم!",
     "noEligibleOrder": "لم يتم العثور على طلب مدفوع مؤهل لهذا المنتج",
+    "ordersLoadError": "تعذر تحميل طلباتك — يرجى المحاولة مرة أخرى",
     "farmersCannotOrder": "لا يمكن للمزارعين تقديم طلبات",
     "selectAddress": "يرجى اختيار عنوان للتوصيل",
     "freshFromFarm": "طازج من المزرعة.",
@@ -224,6 +225,7 @@
   "wallet": {
     "title": "💳 محفظتي",
     "testnetTitle": "شبكة الاختبار فقط — لا أموال حقيقية",
+    "testnetBody": "تستخدم هذه المحفظة عملة XLM التجريبية من شبكة ستيلر الاختبارية، والتي ليس لها قيمة نقدية ولا يمكن تبادلها أو سحبها. إنها موجودة فقط لأغراض الاختبار. لا ترسل أصولاً حقيقية أبداً إلى عنوان شبكة الاختبار.",
     "testnetBody": "تستخدم هذه المحفظة عملة XLM على شبكة ستيلر التجريبية، والتي ليس لها قيمة نقدية ولا يمكن استبدالها أو سحبها. وهي مخصصة فقط لأغراض الاختبار. لا ترسل أصولاً حقيقية إلى عنوان شبكة تجريبية.",
     "xlmBalance": "رصيد XLM",
     "publicKey": "المفتاح العام: {{key}}",
@@ -265,6 +267,22 @@
     "andMore": "...و {{n}} أخطاء أخرى"
   },
   "pagination": {
+    "resultCount_zero": "لا نتائج",
+    "resultCount_one": "نتيجة واحدة",
+    "resultCount_two": "نتيجتان",
+    "resultCount_few": "{{count}} نتائج",
+    "resultCount_many": "{{count}} نتيجة",
+    "resultCount_other": "{{count}} نتيجة"
+  },
+  "compare": {
+    "title": "مقارنة المنتجات",
+    "description": "قارن منتجات السوق المختارة جنباً إلى جنب. اختر ما يصل إلى أربعة منتجات في السوق لعرضها هنا.",
+    "exportCsv": "تصدير CSV",
+    "printPdf": "طباعة / حفظ كـ PDF",
+    "noProducts": "لم يتم اختيار أي منتجات للمقارنة بعد.",
+    "selectTwo": "اختر منتجين على الأقل لمقارنتهما جنباً إلى جنب.",
+    "backToMarketplace": "العودة إلى السوق",
+    "attribute": "السمة",
     "resultCount_one": "نتيجة {{count}}",
     "resultCount_other": "{{count}} نتيجة",
     "resultCount_zero": "لا توجد نتائج",
@@ -305,6 +323,54 @@
     "none": "لا يوجد",
     "noReviews": "لا توجد مراجعات",
     "expired": "منتهي الصلاحية",
+    "expiresToday": "تنتهي اليوم",
+    "daysLeft": "{{days}} يوم متبقي"
+  },
+  "notFound": {
+    "title": "404 - الصفحة غير موجودة",
+    "body": "الصفحة التي تبحث عنها غير موجودة. ربما تم نقلها أو حذفها.",
+    "toMarketplace": "الذهاب إلى السوق",
+    "toHome": "الذهاب إلى الصفحة الرئيسية"
+  },
+  "privateRoute": {
+    "farmerOnly": "هذه الصفحة متاحة للمزارعين فقط",
+    "buyerOnly": "هذه الصفحة متاحة للمشترين فقط",
+    "adminOnly": "هذه الصفحة متاحة للمسؤولين فقط"
+  },
+  "orders": {
+    "title": "طلباتي",
+    "noOrders": "لا توجد طلبات بعد",
+    "orderNumber": "الطلب رقم {{id}}",
+    "status": "الحالة",
+    "pending": "قيد الانتظار",
+    "confirmed": "مؤكد",
+    "shipped": "تم الشحن",
+    "delivered": "تم التسليم",
+    "cancelled": "ملغى",
+    "paid": "مدفوع",
+    "failed": "فشل",
+    "total": "الإجمالي",
+    "viewDetails": "عرض التفاصيل",
+    "trackOrder": "تتبع الطلب",
+    "placedOn": "تم الطلب في {{date}}",
+    "estimatedDelivery": "التسليم المتوقع: {{date}}",
+    "deliveredOn": "تم التسليم في {{date}}"
+  },
+  "settings": {
+    "title": "الإعدادات",
+    "profile": "الملف الشخصي",
+    "notifications": "الإشعارات",
+    "privacy": "الخصوصية",
+    "language": "اللغة",
+    "theme": "المظهر",
+    "save": "حفظ",
+    "cancel": "إلغاء",
+    "changesSaved": "تم حفظ التغييرات بنجاح",
+    "emailNotifications": "إشعارات البريد الإلكتروني",
+    "pushNotifications": "الإشعارات الفورية",
+    "orderUpdates": "تحديثات الطلبات",
+    "promotions": "العروض والخصومات",
+    "newsletter": "النشرة الإخبارية"
     "expiresToday": "تنتهي صلاحيته اليوم",
     "daysLeft": "متبقٍ {{days}} يوم"
     "freshness": "الطزاجة",

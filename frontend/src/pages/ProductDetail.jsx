@@ -49,6 +49,7 @@ import { useReviewForm } from '../hooks/useReviewForm';
 import { usePaymentLink } from '../hooks/usePaymentLink';
 import { addRecentlyViewed } from '../utils/recentlyViewed';
 import { useNetwork } from '../context/NetworkContext';
+import NotFound from './NotFound';
 
 const s = {
   page: { maxWidth: 640, margin: "40px auto", padding: 16 },
@@ -308,6 +309,7 @@ export default function ProductDetail() {
       setQty(p.min_order_quantity || 1);
       if (p.pricing_model === 'pwyw') setCustomPrice(String(p.min_price));
       else if (p.pricing_model === 'donation') setCustomPrice('1.00');
+    }).catch(() => setNotFound(true));
     }).catch(err => {
       if (err.status === 404) setNotFound(true);
       else navigate('/marketplace');
@@ -523,6 +525,8 @@ export default function ProductDetail() {
 
   if (notFound) return <NotFound />;
   if (!product) return <Spinner />;
+
+  if (notFound) return <NotFound />;
 
   // Clamp activeImg to valid range
   const safeActiveImg = images.length > 0 ? Math.min(activeImg, images.length - 1) : 0;

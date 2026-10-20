@@ -284,6 +284,51 @@
     "expired": "Imekwisha muda",
     "expiresToday": "Inaisha leo",
     "daysLeft": "siku {{days}} zimesalia"
+  },
+  "notFound": {
+    "title": "404 - Ukurasa Haupatikani",
+    "body": "Ukurasa unaoutafuta haupo. Huenda umehamishwa au kufutwa.",
+    "toMarketplace": "Nenda Sokoni",
+    "toHome": "Nenda Nyumbani"
+  },
+  "privateRoute": {
+    "farmerOnly": "Ukurasa huu unapatikana kwa wakulima tu",
+    "buyerOnly": "Ukurasa huu unapatikana kwa wanunuzi tu",
+    "adminOnly": "Ukurasa huu unapatikana kwa wasimamizi tu"
+  },
+  "orders": {
+    "title": "Maagizo Yangu",
+    "noOrders": "Hakuna maagizo bado",
+    "orderNumber": "Agizo #{{id}}",
+    "status": "Hali",
+    "pending": "Inasubiri",
+    "confirmed": "Imethibitishwa",
+    "shipped": "Imesafirishwa",
+    "delivered": "Imewasilishwa",
+    "cancelled": "Imefutwa",
+    "paid": "Imelipwa",
+    "failed": "Imeshindwa",
+    "total": "Jumla",
+    "viewDetails": "Angalia Maelezo",
+    "trackOrder": "Fuatilia Agizo",
+    "placedOn": "Liliwekwa tarehe {{date}}",
+    "estimatedDelivery": "Uwasilishaji unatarajiwa: {{date}}",
+    "deliveredOn": "Iliwasilishwa tarehe {{date}}"
+  },
+  "settings": {
+    "title": "Mipangilio",
+    "profile": "Wasifu",
+    "notifications": "Arifa",
+    "privacy": "Faragha",
+    "language": "Lugha",
+    "theme": "Mandhari",
+    "save": "Hifadhi",
+    "cancel": "Ghairi",
+    "changesSaved": "Mabadiliko yamehifadhiwa",
+    "emailNotifications": "Arifa za Barua Pepe",
+    "pushNotifications": "Arifa za Kusukuma",
+    "orderUpdates": "Sasisho za Agizo",
+    "promotions": "Matangazo na Ofa",
+    "newsletter": "Jarida"
   }
 }
-

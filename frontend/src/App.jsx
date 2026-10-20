@@ -7,6 +7,8 @@ import { CompareProvider } from './context/CompareContext';
 import { NetworkProvider } from './context/NetworkContext';
 import { LoadingProvider, LoadingContext } from './context/LoadingContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { setLoadingCallback, setLogoutCallback } from './api/client';
+import { toast } from './utils/toast';
 import { setLoadingCallback, setLogoutCallback, setEmailNotVerifiedCallback } from './api/client';
 import ErrorBoundary from './components/ErrorBoundary';
 import Navbar from './components/Navbar';
@@ -37,6 +39,30 @@ const AddressBook = lazy(() => import('./pages/AddressBook'));
 const Settings = lazy(() => import('./pages/Settings'));
 const AccountRecovery = lazy(() => import('./pages/Settings').then(m => ({ default: m.AccountRecovery })));
 const NotFound = lazy(() => import('./pages/NotFound'));
+
+function PrivateRoute({ children, role }) {
+  const { user, loading } = useAuth();
+  const { t } = useTranslation();
+  const location = useLocation();
+
+  if (loading) return <PageLoader />;
+  
+  if (!user) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+  
+  if (role && user.role !== role) {
+    const roleMessages = {
+      farmer: t('privateRoute.farmerOnly'),
+      buyer: t('privateRoute.buyerOnly'),
+      admin: t('privateRoute.adminOnly'),
+    };
+    if (roleMessages[role]) {
+      toast(roleMessages[role], { type: 'warning' });
+    }
+    return <Navigate to="/" replace />;
+  }
+  
 
 function RoleMismatch({ role }) {
   useEffect(() => {

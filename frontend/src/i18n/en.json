@@ -291,5 +291,51 @@
     "expired": "Expired",
     "expiresToday": "Expires today",
     "daysLeft": "{{days}}d left"
+  },
+  "notFound": {
+    "title": "404 - Page Not Found",
+    "body": "The page you're looking for doesn't exist. It may have been moved or deleted.",
+    "toMarketplace": "Go to Marketplace",
+    "toHome": "Go Home"
+  },
+  "privateRoute": {
+    "farmerOnly": "This page is only accessible to farmers",
+    "buyerOnly": "This page is only accessible to buyers",
+    "adminOnly": "This page is only accessible to administrators"
+  },
+  "orders": {
+    "title": "My Orders",
+    "noOrders": "No orders yet",
+    "orderNumber": "Order #{{id}}",
+    "status": "Status",
+    "pending": "Pending",
+    "confirmed": "Confirmed",
+    "shipped": "Shipped",
+    "delivered": "Delivered",
+    "cancelled": "Cancelled",
+    "paid": "Paid",
+    "failed": "Failed",
+    "total": "Total",
+    "viewDetails": "View Details",
+    "trackOrder": "Track Order",
+    "placedOn": "Placed on {{date}}",
+    "estimatedDelivery": "Estimated delivery: {{date}}",
+    "deliveredOn": "Delivered on {{date}}"
+  },
+  "settings": {
+    "title": "Settings",
+    "profile": "Profile",
+    "notifications": "Notifications",
+    "privacy": "Privacy",
+    "language": "Language",
+    "theme": "Theme",
+    "save": "Save",
+    "cancel": "Cancel",
+    "changesSaved": "Changes saved successfully",
+    "emailNotifications": "Email Notifications",
+    "pushNotifications": "Push Notifications",
+    "orderUpdates": "Order Updates",
+    "promotions": "Promotions & Offers",
+    "newsletter": "Newsletter"
   }
 }

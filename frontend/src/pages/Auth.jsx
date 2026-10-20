@@ -110,6 +110,19 @@ export function LoginPage() {
       navigate(data.user.role === 'farmer' ? '/dashboard' : '/marketplace');
       const { token, user } = await api.login(form);
       login(token, user);
+      
+      // Redirect to intended destination if present, otherwise role default
+      const from = location.state?.from;
+      if (from?.pathname) {
+        const fullPath = from.pathname + (from.search || '');
+        // Only accept same-origin relative paths
+        if (fullPath.startsWith('/') && !fullPath.startsWith('//')) {
+          navigate(fullPath, { replace: true });
+          return;
+        }
+      }
+      
+      navigate(user.role === 'farmer' ? '/dashboard' : '/marketplace', { replace: true });
       navigate(getPostLoginPath(location.state, user));
     } catch (err) {
       setFormError(getErrorMessage(err));
