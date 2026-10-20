@@ -222,6 +222,13 @@
     "row": "Row {{n}}",
     "andMore": "...and {{n}} more errors"
   },
+  "notFound": {
+    "title": "Page not found",
+    "heading": "Page not found",
+    "body": "The page you were looking for doesn't exist or has moved.",
+    "toMarketplace": "Browse the Marketplace",
+    "toHome": "Go to Home"
+  },
   "pagination": {
     "resultCount_one": "{{count}} result",
     "resultCount_other": "{{count}} results"
