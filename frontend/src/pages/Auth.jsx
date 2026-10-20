@@ -25,6 +25,9 @@ const s = {
   linkBtn: { display: 'block', width: '100%', background: 'none', border: 'none', color: '#2d6a4f', fontSize: 14, cursor: 'pointer', marginTop: 16, textAlign: 'center' },
 };
 
+export const authStyles = s;
+
+export function PasswordStrength({ password }) {
 // Returns the path the user was trying to reach before being sent to login,
 // falling back to the role's home page. Only same-origin paths are honoured.
 function getPostLoginPath(state, user) {
@@ -156,6 +159,28 @@ export function LoginPage() {
       </Helmet>
       <div style={s.card}>
         <div style={s.title}>{t('auth.welcomeBack')}</div>
+        <form onSubmit={handleSubmit} noValidate>
+          <div style={s.field}>
+            <label style={s.label} htmlFor="login-email">{t('auth.email')}</label>
+            <input id="login-email" style={errors.email ? s.inputErr : s.input} type="email"
+              value={form.email} onChange={e => handleChange('email', e.target.value)} autoComplete="email"
+              aria-invalid={!!errors.email}
+              aria-describedby={errors.email ? 'login-email-err' : undefined} />
+            {errors.email && <div id="login-email-err" style={s.err} role="alert">{errors.email}</div>}
+          </div>
+          <div style={s.field}>
+            <label style={s.label} htmlFor="login-password">{t('auth.password')}</label>
+            <input id="login-password" ref={passwordRef} style={errors.password ? s.inputErr : s.input} type="password"
+              value={form.password} onChange={e => handleChange('password', e.target.value)} autoComplete="current-password"
+              aria-invalid={!!errors.password}
+              aria-describedby={errors.password ? 'login-password-err' : undefined} />
+            <PasswordStrength password={form.password} />
+            {errors.password && <div id="login-password-err" style={s.err} role="alert">{errors.password}</div>}
+          </div>
+          {formError && <div style={s.formErr} role="alert">{formError}</div>}
+          <button style={s.btn} type="submit">{t('auth.loginBtn')}</button>
+        </form>
+        <Link to="/forgot-password" style={s.link}>{t('auth.forgotPassword')}</Link>
         {mfaToken ? (
           <form onSubmit={handleMfaSubmit} noValidate>
             <div style={s.hint}>{t(useBackupCode ? 'auth.mfa.backupPrompt' : 'auth.mfa.prompt')}</div>
