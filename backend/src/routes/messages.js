@@ -2,6 +2,7 @@ const router = require('express').Router();
 const db = require('../db/schema');
 const auth = require('../middleware/auth');
 const sseAuth = require('../middleware/sseAuth');
+const { issueStreamTicket } = require('../middleware/sseAuth');
 const { err } = require('../middleware/error');
 const { sanitizeText } = require('../utils/sanitize');
 const realtime = require('../utils/realtime');
@@ -102,10 +103,15 @@ router.get('/unread-count', auth, async (req, res) => {
   }
 });
 
+// POST /api/messages/stream-ticket — mints a single-use, 60s ticket for opening the SSE stream.
+// Bearer-authenticated, so the access token never has to be placed in a URL.
+router.post('/stream-ticket', auth, (req, res) => {
+  res.json(issueStreamTicket(req.user.id));
+});
+
 // GET /api/messages/events — SSE stream, delivers new_message events to authenticated user only.
-// Browser EventSource can't set an Authorization header, so this accepts a short-lived
-// stream-scoped token from /auth/stream-token via ?token= (same pattern as /orders/stream).
-// Full access tokens are rejected by the shared sseAuth middleware.
+// Browser EventSource can't set an Authorization header, so this accepts a single-use ticket
+// from POST /messages/stream-ticket via ?ticket=. Tickets are consumed by the sseAuth middleware.
 router.get('/events', sseAuth, (req, res) => {
   const userId = req.user.id;
 

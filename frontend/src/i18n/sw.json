@@ -66,6 +66,17 @@
       "resend": "Tuma tena barua pepe ya uthibitisho",
       "resent": "Ikiwa akaunti yako inahitaji uthibitisho, barua pepe mpya imetumwa.",
       "dismiss": "Funga"
+    "mfa": {
+      "prompt": "Weka msimbo wenye tarakimu 6 kutoka kwenye programu yako ya uthibitishaji.",
+      "backupPrompt": "Weka mojawapo ya misimbo yako ya akiba.",
+      "codeLabel": "Msimbo wa uthibitishaji",
+      "backupLabel": "Msimbo wa akiba",
+      "verifyBtn": "Thibitisha",
+      "useBackup": "Tumia msimbo wa akiba",
+      "useAuthenticator": "Tumia msimbo wa programu",
+      "back": "Rudi kwenye kuingia",
+      "invalidCode": "Msimbo huo si sahihi. Tafadhali jaribu tena.",
+      "locked": "Majaribio mengi sana. Jaribu tena baada ya sekunde {{seconds}}."
     }
   },
   "dashboard": {

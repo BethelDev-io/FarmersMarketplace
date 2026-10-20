@@ -15,6 +15,7 @@ import Spinner from '../components/Spinner';
 import FlashSaleCountdown from '../components/FlashSaleCountdown';
 import ShareButtons from '../components/ShareButtons';
 import PriceHistoryChart from '../components/PriceHistoryChart';
+import NotFound from './NotFound';
 import { Helmet } from 'react-helmet-async';
 import { useTranslation } from 'react-i18next';
 
@@ -127,6 +128,7 @@ export default function ProductDetail() {
   const { isFavorited, toggleFavorite } = useFavorites();
   const navigate = useNavigate();
   const [product, setProduct] = useState(null);
+  const [notFound, setNotFound] = useState(false);
   const [reviews, setReviews] = useState([]);
   const [qty, setQty] = useState(1);
   const [weight, setWeight] = useState('');
@@ -299,13 +301,17 @@ export default function ProductDetail() {
    const { paymentLinkData, paymentLinkLoading, paymentLinkError, generatePaymentLink, setPaymentLinkError } = usePaymentLink();
 
    useEffect(() => {
+    setNotFound(false);
     api.getProduct(id).then(res => {
       const p = res.data ?? res;
       setProduct(p);
       setQty(p.min_order_quantity || 1);
       if (p.pricing_model === 'pwyw') setCustomPrice(String(p.min_price));
       else if (p.pricing_model === 'donation') setCustomPrice('1.00');
-    }).catch(() => navigate('/marketplace'));
+    }).catch(err => {
+      if (err.status === 404) setNotFound(true);
+      else navigate('/marketplace');
+    });
     api.getProductShareMeta(id).then(res => setShareMeta(res.data ?? null)).catch(() => setShareMeta(null));
     loadReviews();
     api.getProductImages(id).then(res => {
@@ -515,6 +521,7 @@ export default function ProductDetail() {
     return () => clearInterval(timer);
   }, [auctionData?.auction_end]);
 
+  if (notFound) return <NotFound />;
   if (!product) return <Spinner />;
 
   // Clamp activeImg to valid range

@@ -102,10 +102,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Product listing API: stale-while-revalidate
-  if (url.pathname.startsWith('/api/products') && request.method === 'GET') {
+  // Product listing API: stale-while-revalidate. Gated by the same allowlist
+  // as the generic API branch so only public, unauthenticated products are cached.
+  if (isCacheableApiRequest(request, url) && url.pathname.startsWith('/api/v1/products')) {
     event.respondWith(
-      caches.match(request).then((cached) => {
+      (async () => {
+        const cached = await caches.match(request);
         const fetchPromise = fetch(request).then((response) => {
           if (response.ok && response.status === 200) {
             const clone = response.clone();
@@ -113,11 +115,13 @@ self.addEventListener('fetch', (event) => {
           }
           return response;
         }).catch(() => null);
-        return cached || fetchPromise || new Response(JSON.stringify({ error: 'offline' }), {
+        if (cached) return cached;
+        const fresh = await fetchPromise;
+        return fresh || new Response(JSON.stringify({ error: 'offline' }), {
           status: 503,
           headers: { 'Content-Type': 'application/json' },
         });
-      })
+      })()
     );
     return;
   }

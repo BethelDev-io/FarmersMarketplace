@@ -214,6 +214,8 @@ async function request(path, options = {}, retry = true, csrfRetry = true) {
       const err = new Error(data.message || data.error || 'Request failed');
       err.code = data.code;
       err.status = res.status;
+      // Seconds until a rate-limited or locked-out request may be retried.
+      err.retryAfter = Number(res.headers.get('Retry-After')) || null;
       throw err;
     }
     return data;
@@ -381,9 +383,11 @@ export const api = {
     const { token } = await request('/auth/stream-token');
     return `/api/orders/stream?token=${encodeURIComponent(token || '')}`;
   },
-  getWalletStreamUrl: () => `/api/wallet/stream?token=${encodeURIComponent(accessToken || '')}`,
-  getOrdersStreamUrl: () => `/api/orders/stream?token=${encodeURIComponent(accessToken || '')}`,
-  getMessagesStreamUrl: () => `/api/messages/events?token=${encodeURIComponent(accessToken || '')}`,
+  // Each call mints a single-use ticket, so request a new URL for every (re)connect.
+  getMessagesStreamUrl: async () => {
+    const { ticket } = await request('/messages/stream-ticket', { method: 'POST' });
+    return `${BASE}/messages/events?ticket=${encodeURIComponent(ticket || '')}`;
+  },
   getStockStreamUrl: (productId) => `${BASE}/products/${encodeURIComponent(productId)}/stock-stream`,
   getUnreadMessageCount: () => request('/messages/unread-count'),
 
@@ -571,6 +575,8 @@ export const api = {
   // Two-Factor Authentication
   setup2FA: () => request('/auth/2fa/setup', { method: 'POST' }),
   verify2FA: (body) => request('/auth/2fa/verify', { method: 'POST', body }),
+  // Second factor at login: exchanges the mfa_token from POST /auth/login for a session.
+  verifyLogin2FA: (body) => request('/auth/2fa/verify-login', { method: 'POST', body }),
   get2FAStatus: () => request('/auth/2fa/status'),
   disable2FA: () => request('/auth/2fa/disable', { method: 'POST' }),
 };

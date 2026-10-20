@@ -1,6 +1,5 @@
 import React, { lazy, Suspense, useEffect, useContext, useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { HelmetProvider } from 'react-helmet-async';
 import { useTranslation } from 'react-i18next';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { FavoritesProvider } from './context/FavoritesContext';
@@ -18,6 +17,7 @@ import PageLoader from './components/PageLoader';
 import UpdatePrompt from './components/UpdatePrompt';
 import { initSentry } from './utils/sentry';
 import { getLocaleDirection } from './i18n';
+import { showToast } from './utils/toast';
 
 const LoginPage = lazy(() => import('./pages/Auth').then(m => ({ default: m.LoginPage })));
 const RegisterPage = lazy(() => import('./pages/Auth').then(m => ({ default: m.RegisterPage })));
@@ -36,18 +36,27 @@ const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 const AddressBook = lazy(() => import('./pages/AddressBook'));
 const Settings = lazy(() => import('./pages/Settings'));
 const AccountRecovery = lazy(() => import('./pages/Settings').then(m => ({ default: m.AccountRecovery })));
+const NotFound = lazy(() => import('./pages/NotFound'));
+
+function RoleMismatch({ role }) {
+  useEffect(() => {
+    showToast(`This page is for ${role}s only`, 'error');
+  }, [role]);
+  return <Navigate to="/" replace />;
+}
 
 function PrivateRoute({ children, role }) {
   const { user, loading } = useAuth();
-  if (loading) return null;
-  if (!user) return <Navigate to="/login" />;
-  if (role && user.role !== role) return <Navigate to="/" />;
+  const location = useLocation();
+  if (loading) return <PageLoader />;
+  if (!user) return <Navigate to="/login" replace state={{ from: location }} />;
+  if (role && user.role !== role) return <RoleMismatch role={role} />;
   return children;
 }
 
 function Home() {
   const { user, loading } = useAuth();
-  if (loading) return null;
+  if (loading) return <PageLoader />;
   if (!user) return <Navigate to="/login" />;
   if (user.role === 'admin') return <Navigate to="/admin" />;
   return <Navigate to={user.role === 'farmer' ? '/dashboard' : '/marketplace'} />;
@@ -118,6 +127,7 @@ function AppContent() {
             <Route path="/addresses" element={<PrivateRoute role="buyer"><AddressBook /></PrivateRoute>} />
             <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
             <Route path="/recover" element={<AccountRecovery />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
       </main>
@@ -131,19 +141,8 @@ export default function App() {
   }, []);
 
   return (
-    <HelmetProvider>
-      <ErrorBoundary>
-        <ThemeProvider>
-          <AuthProvider>
-            <FavoritesProvider>
-              <CompareProvider>
-                <LoadingProvider>
-                  <AppContent />
-                </LoadingProvider>
-              </CompareProvider>
-            </FavoritesProvider>
-          </AuthProvider>
-        </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
         <AuthProvider>
           <FavoritesProvider>
             <CompareProvider>
@@ -155,7 +154,7 @@ export default function App() {
             </CompareProvider>
           </FavoritesProvider>
         </AuthProvider>
-      </ErrorBoundary>
-    </HelmetProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
