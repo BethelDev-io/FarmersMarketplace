@@ -29,6 +29,12 @@ i18n.use(initReactI18next).init({
   // is always available before the first render, preventing raw key display.
   initImmediate: false,
   interpolation: { escapeValue: false },
+  saveMissing: import.meta.env.DEV,
+  missingKeyHandler: (lngs, ns, key, fallbackValue) => {
+    if (import.meta.env.DEV) {
+      console.warn(`Missing i18n key: ${key}`);
+    }
+  },
 });
 
 i18n.on('languageChanged', (lng) => {

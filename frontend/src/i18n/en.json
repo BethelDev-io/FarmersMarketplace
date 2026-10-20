@@ -31,6 +31,52 @@
       "good": "Good",
       "strong": "Strong",
       "needs": "Needs: {{issues}}"
+    },
+    "forgotPassword": "Forgot password?",
+    "backToLogin": "Back to login",
+    "invalidEmail": "Enter a valid email address",
+    "forgot": {
+      "title": "🔑 Reset your password",
+      "intro": "Enter the email address for your account and we'll send you a link to reset your password.",
+      "sendBtn": "Send reset link",
+      "sent": "If that email is registered, a reset link has been sent. Check your inbox."
+    },
+    "reset": {
+      "title": "🔑 Choose a new password",
+      "newPassword": "New password",
+      "confirmPassword": "Confirm new password",
+      "submitBtn": "Reset password",
+      "mismatch": "Passwords do not match",
+      "success": "Your password has been updated. You can now log in.",
+      "missingToken": "This reset link is missing its token.",
+      "invalidToken": "This reset link is invalid or has expired.",
+      "requestNew": "Request a new reset link"
+    },
+    "verify": {
+      "title": "📧 Verify your email",
+      "verifying": "Verifying your email...",
+      "success": "Your email is verified. You can now log in.",
+      "expired": "This verification link is invalid or has expired. Enter your email to get a new one.",
+      "missingToken": "This verification link is missing its token. Enter your email to get a new one.",
+      "resendBtn": "Resend verification email",
+      "resent": "If your account needs verification, a new email has been sent."
+    },
+    "banner": {
+      "notVerified": "Your email isn't verified yet. Verify it to list products and place orders.",
+      "resend": "Resend verification email",
+      "resent": "If your account needs verification, a new email has been sent.",
+      "dismiss": "Dismiss"
+    "mfa": {
+      "prompt": "Enter the 6-digit code from your authenticator app.",
+      "backupPrompt": "Enter one of your backup codes.",
+      "codeLabel": "Authentication code",
+      "backupLabel": "Backup code",
+      "verifyBtn": "Verify",
+      "useBackup": "Use a backup code",
+      "useAuthenticator": "Use an authenticator code",
+      "back": "Back to login",
+      "invalidCode": "That code is not valid. Please try again.",
+      "locked": "Too many attempts. Try again in {{seconds}} seconds."
     }
   },
   "dashboard": {
@@ -210,6 +256,13 @@
     "row": "Row {{n}}",
     "andMore": "...and {{n}} more errors"
   },
+  "notFound": {
+    "title": "Page not found",
+    "heading": "Page not found",
+    "body": "The page you were looking for doesn't exist or has moved.",
+    "toMarketplace": "Browse the Marketplace",
+    "toHome": "Go to Home"
+  },
   "pagination": {
     "resultCount_one": "{{count}} result",
     "resultCount_other": "{{count}} results"
@@ -254,5 +307,50 @@
     "invalid_code": "That verification code is incorrect.",
     "totp_required": "Enter your two-factor authentication code to continue.",
     "not_found": "We couldn't find what you were looking for."
+  "notFound": {
+    "title": "404 - Page Not Found",
+    "body": "The page you're looking for doesn't exist. It may have been moved or deleted.",
+    "toMarketplace": "Go to Marketplace",
+    "toHome": "Go Home"
+  },
+  "privateRoute": {
+    "farmerOnly": "This page is only accessible to farmers",
+    "buyerOnly": "This page is only accessible to buyers",
+    "adminOnly": "This page is only accessible to administrators"
+  },
+  "orders": {
+    "title": "My Orders",
+    "noOrders": "No orders yet",
+    "orderNumber": "Order #{{id}}",
+    "status": "Status",
+    "pending": "Pending",
+    "confirmed": "Confirmed",
+    "shipped": "Shipped",
+    "delivered": "Delivered",
+    "cancelled": "Cancelled",
+    "paid": "Paid",
+    "failed": "Failed",
+    "total": "Total",
+    "viewDetails": "View Details",
+    "trackOrder": "Track Order",
+    "placedOn": "Placed on {{date}}",
+    "estimatedDelivery": "Estimated delivery: {{date}}",
+    "deliveredOn": "Delivered on {{date}}"
+  },
+  "settings": {
+    "title": "Settings",
+    "profile": "Profile",
+    "notifications": "Notifications",
+    "privacy": "Privacy",
+    "language": "Language",
+    "theme": "Theme",
+    "save": "Save",
+    "cancel": "Cancel",
+    "changesSaved": "Changes saved successfully",
+    "emailNotifications": "Email Notifications",
+    "pushNotifications": "Push Notifications",
+    "orderUpdates": "Order Updates",
+    "promotions": "Promotions & Offers",
+    "newsletter": "Newsletter"
   }
 }

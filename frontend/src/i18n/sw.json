@@ -31,6 +31,52 @@
       "good": "Nzuri",
       "strong": "Imara",
       "needs": "Inahitaji: {{issues}}"
+    },
+    "forgotPassword": "Umesahau nywila?",
+    "backToLogin": "Rudi kwenye kuingia",
+    "invalidEmail": "Weka barua pepe sahihi",
+    "forgot": {
+      "title": "🔑 Weka upya nywila yako",
+      "intro": "Weka barua pepe ya akaunti yako nasi tutakutumia kiungo cha kuweka upya nywila.",
+      "sendBtn": "Tuma kiungo cha kuweka upya",
+      "sent": "Ikiwa barua pepe hiyo imesajiliwa, kiungo cha kuweka upya nywila kimetumwa. Angalia kikasha chako."
+    },
+    "reset": {
+      "title": "🔑 Chagua nywila mpya",
+      "newPassword": "Nywila mpya",
+      "confirmPassword": "Thibitisha nywila mpya",
+      "submitBtn": "Weka upya nywila",
+      "mismatch": "Nywila hazifanani",
+      "success": "Nywila yako imesasishwa. Sasa unaweza kuingia.",
+      "missingToken": "Kiungo hiki cha kuweka upya hakina tokeni.",
+      "invalidToken": "Kiungo hiki cha kuweka upya si sahihi au kimeisha muda.",
+      "requestNew": "Omba kiungo kipya cha kuweka upya"
+    },
+    "verify": {
+      "title": "📧 Thibitisha barua pepe yako",
+      "verifying": "Inathibitisha barua pepe yako...",
+      "success": "Barua pepe yako imethibitishwa. Sasa unaweza kuingia.",
+      "expired": "Kiungo hiki cha uthibitisho si sahihi au kimeisha muda. Weka barua pepe yako upate kipya.",
+      "missingToken": "Kiungo hiki cha uthibitisho hakina tokeni. Weka barua pepe yako upate kipya.",
+      "resendBtn": "Tuma tena barua pepe ya uthibitisho",
+      "resent": "Ikiwa akaunti yako inahitaji uthibitisho, barua pepe mpya imetumwa."
+    },
+    "banner": {
+      "notVerified": "Barua pepe yako bado haijathibitishwa. Ithibitishe ili uweze kuorodhesha bidhaa na kuagiza.",
+      "resend": "Tuma tena barua pepe ya uthibitisho",
+      "resent": "Ikiwa akaunti yako inahitaji uthibitisho, barua pepe mpya imetumwa.",
+      "dismiss": "Funga"
+    "mfa": {
+      "prompt": "Weka msimbo wenye tarakimu 6 kutoka kwenye programu yako ya uthibitishaji.",
+      "backupPrompt": "Weka mojawapo ya misimbo yako ya akiba.",
+      "codeLabel": "Msimbo wa uthibitishaji",
+      "backupLabel": "Msimbo wa akiba",
+      "verifyBtn": "Thibitisha",
+      "useBackup": "Tumia msimbo wa akiba",
+      "useAuthenticator": "Tumia msimbo wa programu",
+      "back": "Rudi kwenye kuingia",
+      "invalidCode": "Msimbo huo si sahihi. Tafadhali jaribu tena.",
+      "locked": "Majaribio mengi sana. Jaribu tena baada ya sekunde {{seconds}}."
     }
   },
   "dashboard": {
@@ -254,5 +300,52 @@
     "invalid_code": "Msimbo wa uthibitisho si sahihi.",
     "totp_required": "Weka msimbo wa uthibitishaji wa hatua mbili ili kuendelea.",
     "not_found": "Hatukuweza kupata ulichokuwa ukitafuta."
+  }
+}
+  "notFound": {
+    "title": "404 - Ukurasa Haupatikani",
+    "body": "Ukurasa unaoutafuta haupo. Huenda umehamishwa au kufutwa.",
+    "toMarketplace": "Nenda Sokoni",
+    "toHome": "Nenda Nyumbani"
+  },
+  "privateRoute": {
+    "farmerOnly": "Ukurasa huu unapatikana kwa wakulima tu",
+    "buyerOnly": "Ukurasa huu unapatikana kwa wanunuzi tu",
+    "adminOnly": "Ukurasa huu unapatikana kwa wasimamizi tu"
+  },
+  "orders": {
+    "title": "Maagizo Yangu",
+    "noOrders": "Hakuna maagizo bado",
+    "orderNumber": "Agizo #{{id}}",
+    "status": "Hali",
+    "pending": "Inasubiri",
+    "confirmed": "Imethibitishwa",
+    "shipped": "Imesafirishwa",
+    "delivered": "Imewasilishwa",
+    "cancelled": "Imefutwa",
+    "paid": "Imelipwa",
+    "failed": "Imeshindwa",
+    "total": "Jumla",
+    "viewDetails": "Angalia Maelezo",
+    "trackOrder": "Fuatilia Agizo",
+    "placedOn": "Liliwekwa tarehe {{date}}",
+    "estimatedDelivery": "Uwasilishaji unatarajiwa: {{date}}",
+    "deliveredOn": "Iliwasilishwa tarehe {{date}}"
+  },
+  "settings": {
+    "title": "Mipangilio",
+    "profile": "Wasifu",
+    "notifications": "Arifa",
+    "privacy": "Faragha",
+    "language": "Lugha",
+    "theme": "Mandhari",
+    "save": "Hifadhi",
+    "cancel": "Ghairi",
+    "changesSaved": "Mabadiliko yamehifadhiwa",
+    "emailNotifications": "Arifa za Barua Pepe",
+    "pushNotifications": "Arifa za Kusukuma",
+    "orderUpdates": "Sasisho za Agizo",
+    "promotions": "Matangazo na Ofa",
+    "newsletter": "Jarida"
   }
 }

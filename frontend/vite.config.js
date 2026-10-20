@@ -36,6 +36,18 @@ function serviceWorkerVersion() {
   };
 }
 
+// Backend-served paths. Production routes these through nginx, so keep this list
+// in sync with nginx/farmers-marketplace.conf or dev and prod will diverge.
+const PROXY_TARGET = process.env.VITE_API_URL || 'http://localhost:4000';
+const BACKEND_PATHS = [
+  '/api',
+  '/uploads',
+  '/federation',
+  '/.well-known',
+  '/sitemap.xml',
+  '/robots.txt',
+];
+
 export default defineConfig({
   plugins: [react(), serviceWorkerVersion()],
   define: {
@@ -58,9 +70,13 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    proxy: {
-      '/api': process.env.VITE_API_URL || 'http://localhost:4000',
-    },
+    // ws + changeOrigin keep WebSocket upgrades and SSE streams working through the proxy.
+    proxy: Object.fromEntries(
+      BACKEND_PATHS.map((path) => [
+        path,
+        { target: PROXY_TARGET, changeOrigin: true, ws: true },
+      ]),
+    ),
   },
   test: {
     environment: 'jsdom',

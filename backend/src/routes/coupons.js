@@ -50,6 +50,7 @@ async function resolveCoupon(code, farmerId, userId) {
       'SELECT COUNT(*) as cnt FROM coupon_uses WHERE coupon_id = $1 AND user_id = $2',
       [coupon.id, userId]
     );
+    if (parseInt(usesRows[0].cnt, 10) >= coupon.max_uses_per_user)
     if (Number(usesRows[0].cnt) >= coupon.max_uses_per_user)
       return { error: 'Coupon already used', code: 'coupon_already_used' };
   }
@@ -194,6 +195,8 @@ router.post('/', auth, async (req, res) => {
       [req.user.id, normalizedCode, discount_type, value, maxUses, maxUsesPerUser, expiresAt]
     );
     res.json({ success: true, id: rows[0].id, code: normalizedCode });
+  } catch (e) {
+    if (e.message.includes('UNIQUE') || e.code === '23505')
   } catch (error) {
     if (error.message.includes('UNIQUE') || error.code === '23505')
       return err(res, 409, 'Coupon code already exists', 'conflict');
