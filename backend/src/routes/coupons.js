@@ -51,6 +51,7 @@ async function resolveCoupon(code, farmerId, userId) {
       [coupon.id, userId]
     );
     if (parseInt(usesRows[0].cnt, 10) >= coupon.max_uses_per_user)
+    if (Number(usesRows[0].cnt) >= coupon.max_uses_per_user)
       return { error: 'Coupon already used', code: 'coupon_already_used' };
   }
   return { coupon };
@@ -196,8 +197,10 @@ router.post('/', auth, async (req, res) => {
     res.json({ success: true, id: rows[0].id, code: normalizedCode });
   } catch (e) {
     if (e.message.includes('UNIQUE') || e.code === '23505')
+  } catch (error) {
+    if (error.message.includes('UNIQUE') || error.code === '23505')
       return err(res, 409, 'Coupon code already exists', 'conflict');
-    throw e;
+    throw error;
   }
 });
 
@@ -219,14 +222,6 @@ router.delete('/:id', auth, async (req, res) => {
     [req.params.id, req.user.id]
   );
   if (!rows[0]) return err(res, 404, 'Coupon not found', 'not_found');
-  const coupon = (
-    await db.query('SELECT * FROM coupons WHERE id = $1 AND farmer_id = $2', [
-      req.params.id,
-      req.user.id,
-    ])
-  ).rows[0];
-  if (!coupon) return err(res, 404, 'Coupon not found', 'not_found');
-  await db.query('DELETE FROM coupons WHERE id = $1', [req.params.id]);
   res.json({ success: true });
 });
 

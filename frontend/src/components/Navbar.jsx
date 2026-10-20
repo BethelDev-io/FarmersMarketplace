@@ -42,14 +42,40 @@ export default function Navbar() {
     return () => { cancelled = true; };
   }, [user]);
 
-  // Live updates via SSE — increment on new_message
+  // Live updates via SSE — increment on new_message. Tickets are single-use, so
+  // every reconnect fetches a fresh stream URL instead of reusing the old one.
   useEffect(() => {
     if (!user || typeof EventSource === 'undefined' || typeof api.getMessagesStreamUrl !== 'function') return;
-    const es = new EventSource(api.getMessagesStreamUrl());
-    es.addEventListener('new_message', () => {
-      setUnreadCount(c => c + 1);
-    });
-    return () => es.close();
+    let cancelled = false;
+    let es = null;
+    let reconnectTimer = null;
+    async function connect() {
+      let url = '';
+      try {
+        url = await api.getMessagesStreamUrl();
+      } catch {
+        /* retry below */
+      }
+      if (cancelled) return;
+      if (!url) {
+        reconnectTimer = setTimeout(connect, 5000);
+        return;
+      }
+      es = new EventSource(url);
+      es.addEventListener('new_message', () => {
+        setUnreadCount(c => c + 1);
+      });
+      es.onerror = () => {
+        es.close();
+        reconnectTimer = setTimeout(connect, 5000);
+      };
+    }
+    connect();
+    return () => {
+      cancelled = true;
+      clearTimeout(reconnectTimer);
+      es?.close();
+    };
   }, [user]);
 
   // Refresh the count whenever messages are marked read elsewhere in the app

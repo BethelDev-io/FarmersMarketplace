@@ -7,5 +7,14 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: './src/test/setup.js',
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'lcov'],
+      reportsDirectory: './coverage',
+      // Starting floor; raise over time as coverage grows (#1396).
+      thresholds: {
+        lines: 50,
+      },
+    },
   },
 });

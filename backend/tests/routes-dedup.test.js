@@ -54,9 +54,11 @@ describe('Route deduplication', () => {
     routerStack = app._router ? app._router.stack : [];
   });
 
+  // export.js no longer exports a single default router mounted at '/export' —
+  // it exports productsRouter/ordersRouter, mounted at their own /products and
+  // /orders prefixes instead, so '/api/export' is not a real mount point.
   const suspectPaths = [
     '/api/coupons',
-    '/api/export',
     '/api/categories',
     '/api/reviews',
   ];
