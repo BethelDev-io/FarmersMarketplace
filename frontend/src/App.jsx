@@ -32,6 +32,7 @@ const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 const AddressBook = lazy(() => import('./pages/AddressBook'));
 const Settings = lazy(() => import('./pages/Settings'));
 const AccountRecovery = lazy(() => import('./pages/Settings').then(m => ({ default: m.AccountRecovery })));
+const NotFound = lazy(() => import('./pages/NotFound'));
 
 function RoleMismatch({ role }) {
   useEffect(() => {
@@ -116,6 +117,7 @@ function AppContent() {
             <Route path="/addresses" element={<PrivateRoute role="buyer"><AddressBook /></PrivateRoute>} />
             <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
             <Route path="/recover" element={<AccountRecovery />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
       </main>
