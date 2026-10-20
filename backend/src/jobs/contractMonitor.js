@@ -37,6 +37,7 @@ const { sendStatusUpdateEmail } = require('../utils/mailer');
 const { sendPushToUser } = require('../utils/pushNotifications');
 const logger = require('../logger');
 const config = require('../config');
+const { transition } = require('../models/orderStatus');
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const MAX_RETRIES = 5;
@@ -136,10 +137,12 @@ async function handleRelease(contractId, topics, data, txHash) {
 
   logger.info(`[ContractMonitor] release event — order #${orderId}`);
 
-  await db.query(
-    `UPDATE orders SET escrow_status = 'released', status = 'paid' WHERE id = $1`,
-    [orderId]
-  ).catch((e) => logger.error('[ContractMonitor] release DB update failed:', e.message));
+  await transition(orderId, ['pending', 'confirming', 'paid'], 'paid', {
+    actor: 'contract-monitor',
+    reason: 'escrow:release',
+  }).catch((e) => logger.error('[ContractMonitor] release status update failed:', e.message));
+  await db.query(`UPDATE orders SET escrow_status = 'released' WHERE id = $1`, [orderId])
+    .catch((e) => logger.error('[ContractMonitor] release escrow update failed:', e.message));
 
   // Notify buyer
   try {
@@ -173,10 +176,12 @@ async function handleRefund(contractId, topics, data, txHash) {
 
   logger.info(`[ContractMonitor] refund event — order #${orderId}`);
 
-  await db.query(
-    `UPDATE orders SET escrow_status = 'refunded' WHERE id = $1`,
-    [orderId]
-  ).catch((e) => logger.error('[ContractMonitor] refund DB update failed:', e.message));
+  await transition(orderId, ['pending', 'confirming', 'paid', 'processing', 'disputed'], 'refunded', {
+    actor: 'contract-monitor',
+    reason: 'escrow:refund',
+  }).catch((e) => logger.error('[ContractMonitor] refund status update failed:', e.message));
+  await db.query(`UPDATE orders SET escrow_status = 'refunded' WHERE id = $1`, [orderId])
+    .catch((e) => logger.error('[ContractMonitor] refund escrow update failed:', e.message));
 
   // Notify buyer
   try {

@@ -6,6 +6,7 @@ const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
 const db = require('../db/schema');
 const { currentTimestamp } = require('../db/dialect');
+const { invalidateAuthStatus } = require('../cache');
 const {
   createWalletFromMnemonic,
   deriveKeypairFromMnemonic,
@@ -511,6 +512,7 @@ router.post('/deactivate', auth, async (req, res) => {
   await db.query('UPDATE users SET active = 0, deactivated_at = CURRENT_TIMESTAMP WHERE id = $1', [
     req.user.id,
   ]);
+  await invalidateAuthStatus(req.user.id);
 
   // Revoke all sessions
   await db.query('DELETE FROM refresh_tokens WHERE user_id = $1', [req.user.id]);
@@ -547,6 +549,7 @@ router.delete('/account', auth, async (req, res) => {
 
   // Delete user — cascade handles related rows (orders, refresh_tokens, etc.)
   await db.query('DELETE FROM users WHERE id = $1', [req.user.id]);
+  await invalidateAuthStatus(req.user.id);
 
   // Clear the refresh token cookie
   res.clearCookie('refreshToken', { path: '/api/auth' });

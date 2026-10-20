@@ -2,6 +2,7 @@
 
 const cron = require('node-cron');
 const logger = require('../logger');
+const { transition } = require('../models/orderStatus');
 const db = require('../db/schema');
 const { sendPayment } = require('../utils/stellar');
 const { decryptUserSecretKey } = require('../utils/crypto');
@@ -150,10 +151,11 @@ async function processSubscriptions() {
       });
 
       // Confirm success atomically
-      await db.query(
-        'UPDATE orders SET status = $1, stellar_tx_hash = $2 WHERE id = $3',
-        ['paid', txHash, orderId]
-      );
+      await transition(orderId, 'pending', 'paid', {
+        actor: 'subscription-job',
+        reason: 'payment-confirmed',
+      });
+      await db.query('UPDATE orders SET stellar_tx_hash = $1 WHERE id = $2', [txHash, orderId]);
       await db.query(
         'UPDATE subscriptions SET next_order_at = $1, retry_count = 0, retry_after = NULL WHERE id = $2',
         [nextOrderDate(sub.frequency), sub.id]
@@ -168,7 +170,10 @@ async function processSubscriptions() {
       });
     } catch (e) {
       // Restore stock
-      await db.query('UPDATE orders SET status = $1 WHERE id = $2', ['failed', orderId]);
+      await transition(orderId, 'pending', 'failed', {
+        actor: 'subscription-job',
+        reason: e.message,
+      });
       await db.query('UPDATE products SET quantity = quantity + $1 WHERE id = $2', [
         sub.quantity,
         sub.product_id,
