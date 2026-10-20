@@ -1,7 +1,22 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { api, setAccessToken, clearAccessToken } from '../api/client';
 
 const AuthContext = createContext(null);
+
+const AUTH_CHANNEL = 'auth';
+const AUTH_STORAGE_KEY = 'auth:event';
+let authChannel = null;
+
+// Tells other tabs that this one logged in or out (#1394). Browsers without
+// BroadcastChannel get a storage event instead; that fires only in other tabs.
+function broadcastAuth(message) {
+  if (typeof BroadcastChannel !== 'undefined') {
+    authChannel = authChannel || new BroadcastChannel(AUTH_CHANNEL);
+    authChannel.postMessage(message);
+  } else {
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ message, at: Date.now() }));
+  }
+}
 
 // Ask the service worker to drop every cached API response so a previous
 // user's authenticated data can never be served to the next person on a
@@ -19,20 +34,55 @@ function clearUserCache() {
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true); // wait for silent refresh on mount
+  const userRef = useRef(null);
 
   // On mount: attempt silent refresh to restore session from HttpOnly cookie
   useEffect(() => {
+    // Profiles used to be cached here; drop any copy left by an older build.
+    localStorage.removeItem('user');
     api.refresh()
       .then((token) => {
         if (!token) return;
         return api.getCurrentUser()
           .then((profile) => {
             setUser(profile);
-            localStorage.setItem('user', JSON.stringify(profile));
           });
       })
       .catch(() => {}) // no cookie, expired, or profile fetch failed — stay logged out
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  // Mirror login/logout from other tabs (#1394). A logout ends this session too;
+  // a login as someone else reloads so nothing on screen shows the old user.
+  useEffect(() => {
+    const onAuthMessage = (message) => {
+      if (message === 'logout') {
+        clearAccessToken();
+        clearUserCache();
+        setUser(null);
+      } else if (message.startsWith('login:') && message.slice('login:'.length) !== String(userRef.current?.id)) {
+        window.location.reload();
+      }
+    };
+    const onStorage = (e) => {
+      if (e.key === AUTH_STORAGE_KEY && e.newValue) onAuthMessage(JSON.parse(e.newValue).message);
+    };
+
+    let channel = null;
+    if (typeof BroadcastChannel !== 'undefined') {
+      channel = new BroadcastChannel(AUTH_CHANNEL);
+      channel.onmessage = (e) => onAuthMessage(e.data);
+    } else {
+      window.addEventListener('storage', onStorage);
+    }
+    return () => {
+      channel?.close();
+      window.removeEventListener('storage', onStorage);
+    };
   }, []);
 
   useEffect(() => {
@@ -79,8 +129,8 @@ export function AuthProvider({ children }) {
     // responses cached for the previous session before we start fetching.
     clearUserCache();
     setAccessToken(token);
-    localStorage.setItem('user', JSON.stringify(userData)); // store user profile only, NOT the token
     setUser(userData);
+    broadcastAuth(`login:${userData.id}`);
   }
 
   async function logout() {
@@ -96,6 +146,7 @@ export function AuthProvider({ children }) {
     // Drop cached authenticated API responses so they can't leak to the
     // next person who uses this device.
     clearUserCache();
+    broadcastAuth('logout');
   }
 
   return (
