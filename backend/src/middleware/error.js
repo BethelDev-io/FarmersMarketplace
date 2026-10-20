@@ -93,12 +93,11 @@ function errorHandler(error, req, res, next) {
     });
   }
 
-  // Default 500
+  // Default 500: never expose SQL, Horizon, filesystem, or provider details.
   return res.status(error.status || 500).json({
     success: false,
-    error: 'internal_error',
-    message: isProd ? 'Internal server error' : error.message,
-    ...(isProd ? {} : { stack: error.stack }),
+    error: error.status && error.code ? error.code : 'internal_error',
+    message: error.status && error.code ? (error.publicMessage || error.message) : 'Internal server error',
   });
 }
 

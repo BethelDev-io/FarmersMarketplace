@@ -264,6 +264,7 @@ module.exports = {
   confirmPassword: validate(
     z.object({
       password: z.string().min(1, 'password is required'),
+      totp: z.string().regex(/^\d{6}$/, 'totp must be a 6-digit code').optional(),
     })
   ),
 

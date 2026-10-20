@@ -348,7 +348,7 @@ async function createPreorderClaimableBalance({
 }
 
 // Get the shared Soroban RPC server instance
-function getSorobanServer() {
+async function getSorobanServer() {
   const sorobanRpcUrl =
     process.env.SOROBAN_RPC_URL ||
     (isTestnet ? 'https://soroban-testnet.stellar.org' : 'https://soroban.stellar.org');
@@ -812,7 +812,7 @@ async function getCarbonOffset(orderId) {
 async function checkSorobanRPC() {
   const startTime = Date.now();
   try {
-    const sorobanServer = getSorobanServer();
+    const sorobanServer = await getSorobanServer();
     // Use getHealth method from SorobanRpc.Server
     const healthResponse = await sorobanServer.getHealth();
     const responseTime = Date.now() - startTime;

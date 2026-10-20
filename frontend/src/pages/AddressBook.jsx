@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 
+import { getErrorMessage } from '../utils/errorMessages';
 const s = {
   page: { maxWidth: 800, margin: '40px auto', padding: 24 },
   title: { fontSize: 24, fontWeight: 700, color: '#2d6a4f', marginBottom: 24 },
@@ -218,7 +219,7 @@ export default function AddressBook() {
           text: `You've reached the ${addressLimit}-address limit. Delete an address you no longer need to add a new one.`,
         });
       } else {
-        setMsg({ type: 'err', text: err.message });
+        setMsg({ type: 'err', text: getErrorMessage(err) });
       }
     } finally {
       setLoading(false);
@@ -233,7 +234,7 @@ export default function AddressBook() {
       setMsg({ type: 'ok', text: 'Address deleted' });
       load();
     } catch (err) {
-      setMsg({ type: 'err', text: err.message });
+      setMsg({ type: 'err', text: getErrorMessage(err) });
     }
   }
 
@@ -244,7 +245,7 @@ export default function AddressBook() {
       await api.setDefaultAddress(id);
       setMsg({ type: 'ok', text: 'Default address updated' });
     } catch (err) {
-      setMsg({ type: 'err', text: err.message });
+      setMsg({ type: 'err', text: getErrorMessage(err) });
       load(); // revert on error
     }
   }

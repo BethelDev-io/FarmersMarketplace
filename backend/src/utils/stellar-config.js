@@ -23,14 +23,6 @@ const horizonUrl =
   process.env.STELLAR_HORIZON_URL ||
   (isTestnet ? 'https://horizon-testnet.stellar.org' : 'https://horizon.stellar.org');
 
-const horizonUrl =
-  process.env.STELLAR_HORIZON_URL ||
-  (isTestnet ? 'https://horizon-testnet.stellar.org' : 'https://horizon.stellar.org');
-
-const horizonUrl =
-  process.env.STELLAR_HORIZON_URL ||
-  (isTestnet ? 'https://horizon-testnet.stellar.org' : 'https://horizon.stellar.org');
-
 const sorobanRpcUrl =
   process.env.SOROBAN_RPC_URL ||
   (isTestnet ? 'https://soroban-testnet.stellar.org' : 'https://soroban.stellar.org');
@@ -45,8 +37,6 @@ function normalizeServerUrlCompat(serverInstance) {
 
 const server = normalizeServerUrlCompat(new StellarSdk.Horizon.Server(horizonUrl));
 const sorobanServer = normalizeServerUrlCompat(new StellarSdk.SorobanRpc.Server(sorobanRpcUrl));
-const server = new StellarSdk.Horizon.Server(horizonUrl);
-const sorobanServer = new StellarSdk.SorobanRpc.Server(sorobanRpcUrl);
 
 // Required Soroban/escrow environment variables. Missing values cause cryptic
 // runtime failures at the contract call site, so we validate them at startup.

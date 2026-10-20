@@ -1,43 +1,50 @@
 {
-  "env": {
-    "browser": true,
-    "es2021": true,
-    "node": true
-  },
   "extends": [
     "eslint:recommended",
     "plugin:react/recommended",
-    "plugin:react-hooks/recommended",
-    "prettier"
+    "plugin:react-hooks/recommended"
   ],
-  "parserOptions": {
-    "ecmaFeatures": {
-      "jsx": true
-    },
-    "ecmaVersion": "latest",
-    "sourceType": "module"
-  },
-  "plugins": [
-    "react",
-    "react-hooks"
-  ],
+  "plugins": ["react", "react-hooks", "react-refresh", "i18next"],
   "settings": {
     "react": {
       "version": "detect"
     }
   },
   "rules": {
-    "no-console": "warn",
-    "no-dupe-keys": "error",
-    "react/prop-types": "off",
-    "react/react-in-jsx-scope": "off",
-    "no-unused-vars": [
-      "error",
+    "react-refresh/only-export-components": ["warn", { "allowConstantExport": true }],
+    "i18next/no-literal-string": [
+      "warn",
       {
-        "argsIgnorePattern": "^_"
+        "mode": "jsx-text-only",
+        "should-validate-template": false,
+        "ignore": ["XLM", "kg", "g", "lb", "oz", "unit", "units", "+", "-", "×", "÷", "=", "/", ":", ";", ",", ".", "!", "?", "%", "$", "#", "@", "&", "|", "\\", "(", ")", "[", "]", "{", "}", "<", ">", "~", "`", "^", "*", "_"]
       }
-    ],
-    "react/no-array-index-key": "error",
-    "no-alert": "error"
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["src/pages/**/*.jsx", "src/components/**/*.jsx"],
+      "rules": {
+        "i18next/no-literal-string": [
+          "warn",
+          {
+            "mode": "jsx-text-only",
+            "should-validate-template": false,
+            "ignore": ["XLM", "kg", "g", "lb", "oz", "unit", "units"]
+          }
+        ]
+      }
+    }
+  ],
+  "env": {
+    "browser": true,
+    "es2021": true
+  },
+  "parserOptions": {
+    "ecmaVersion": "latest",
+    "sourceType": "module",
+    "ecmaFeatures": {
+      "jsx": true
+    }
   }
 }

@@ -65,6 +65,8 @@ npm run dev
 
 Runs on http://localhost:3000
 
+The Vite dev server proxies backend paths (`/api`, `/uploads`, `/federation`, `/.well-known`, `/sitemap.xml`, `/robots.txt`) to `VITE_API_URL` (default `http://localhost:4000`). Set `VITE_API_URL` in the environment before `npm run dev` if the backend runs elsewhere. The list mirrors `nginx/farmers-marketplace.conf`.
+
 ## Payment Flow
 
 1. Register as a **buyer** and a **farmer** (two separate accounts)

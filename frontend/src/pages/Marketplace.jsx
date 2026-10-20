@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef, lazy, Suspense } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -19,10 +19,12 @@ import Pagination from "../components/Pagination";
 import { useTranslation } from "react-i18next";
 import { buildSrcSet } from "../utils/imageUtils";
 
+import { getErrorMessage } from '../utils/errorMessages';
+import { filtersFromParams, filtersToParams } from '../utils/marketplaceUrl';
 const MapView = lazy(() => import("../components/MapView"));
 
-const CATEGORIES = [
-  "all",
+// Fallback when GET /categories is unavailable.
+const FALLBACK_CATEGORIES = [
   "vegetables",
   "fruits",
   "grains",
@@ -394,7 +396,11 @@ export default function Marketplace() {
   const { t, i18n } = useTranslation();
   const [products, setProducts] = useState([]);
   const [auctions, setAuctions] = useState([]);
-  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [filters, setFilters] = useState(() => filtersFromParams(searchParams, EMPTY_FILTERS));
+  const [categories, setCategories] = useState(() =>
+    FALLBACK_CATEGORIES.map((c) => ({ value: c, label: c.charAt(0).toUpperCase() + c.slice(1) }))
+  );
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
@@ -581,16 +587,70 @@ export default function Marketplace() {
     }
   }
 
-  // Restore listing on back-navigation (only if the snapshot is still fresh)
+  // Restore listing on back-navigation (only if the snapshot is still fresh
+  // and matches the filters in the URL — the URL is the source of truth).
   useEffect(() => {
+    const urlFilters = filtersFromParams(searchParams, EMPTY_FILTERS);
     const snap = readSnapshot();
-    if (snap) {
+    if (snap && filtersKey(snap.filters || {}) === filtersKey(urlFilters)) {
       restoreSnapshot(snap);
       return;
     }
-    load(EMPTY_FILTERS);
+    clearSnapshot();
+    load(urlFilters);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Categories come from GET /categories; keep the fallback list on failure.
+  useEffect(() => {
+    let cancelled = false;
+    api.getCategoryList()
+      .then((res) => {
+        const rows = Array.isArray(res?.data) ? res.data : [];
+        if (cancelled || rows.length === 0) return;
+        setCategories(rows.map((c) => ({ value: c.slug || String(c.name).toLowerCase(), label: c.name })));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  // Filters → URL. Text inputs are synced from their debounced (300 ms) values
+  // so typing doesn't create a history entry per keystroke.
+  const lastUrlRef = useRef(searchParams.toString());
+  useEffect(() => {
+    const next = filtersToParams(
+      { ...filters, search: debouncedSearch, seller: debouncedSeller, radius: debouncedRadius },
+      EMPTY_FILTERS
+    ).toString();
+    if (next === lastUrlRef.current) return;
+    // Filters were just restored from the URL and the debounced values are
+    // still catching up — don't push a stale entry.
+    if (filtersToParams(filters, EMPTY_FILTERS).toString() === lastUrlRef.current) return;
+    lastUrlRef.current = next;
+    setSearchParams(next, { replace: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    debouncedSearch,
+    debouncedSeller,
+    debouncedRadius,
+    filters.category,
+    filters.minPrice,
+    filters.maxPrice,
+    filters.available,
+    filters.excludeAllergens,
+    filters.sort,
+    filters.grade,
+    filters.lat,
+    filters.lng,
+  ]);
+
+  // URL → filters (back/forward, or a pasted/shared link).
+  useEffect(() => {
+    const current = searchParams.toString();
+    if (current === lastUrlRef.current) return;
+    lastUrlRef.current = current;
+    setFilters(filtersFromParams(searchParams, EMPTY_FILTERS));
+  }, [searchParams]);
 
   // Clamp page when totalPages shrinks (defense in depth)
   useEffect(() => {
@@ -729,7 +789,7 @@ export default function Marketplace() {
     } catch (e) {
       setBundleMsg((m) => ({
         ...m,
-        [bundleId]: { type: "err", text: e.message },
+        [bundleId]: { type: "err", text: getErrorMessage(e) },
       }));
     }
   }
@@ -740,6 +800,8 @@ export default function Marketplace() {
 
   function reset() {
     setFilters(EMPTY_FILTERS);
+    lastUrlRef.current = '';
+    setSearchParams({}, { replace: false });
     setGeoError('');
     clearSnapshot();
     load(EMPTY_FILTERS);
@@ -969,9 +1031,10 @@ export default function Marketplace() {
           }
           aria-label="Filter by category"
         >
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c === "all" ? "" : c}>
-              {c.charAt(0).toUpperCase() + c.slice(1)}
+          <option value="">All</option>
+          {categories.map((c) => (
+            <option key={c.value} value={c.value}>
+              {c.label}
             </option>
           ))}
         </select>

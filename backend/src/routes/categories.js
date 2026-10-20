@@ -64,19 +64,22 @@ function toSlug(name) {
 }
 
 // GET /api/categories - public, includes product_count
-router.get('/', (_req, res) => {
-  const rows = db.prepare(`
+router.get('/', async (_req, res) => {
+  const { rows } = await db.query(`
     SELECT c.*, COUNT(p.id) as product_count
     FROM categories c
     LEFT JOIN products p ON p.category_id = c.id
     GROUP BY c.id
     ORDER BY c.name
-  `).all();
-  res.json({ success: true, data: rows });
+  `);
+  res.json({
+    success: true,
+    data: rows.map((row) => ({ ...row, product_count: Number(row.product_count) })),
+  });
 });
 
 // POST /api/admin/categories - admin only
-router.post('/admin/categories', auth, (req, res) => {
+router.post('/admin/categories', auth, async (req, res) => {
   if (req.user.role !== 'admin') return err(res, 403, 'Admins only', 'forbidden');
 
   const name = sanitizeText(req.body.name || '');
@@ -86,46 +89,59 @@ router.post('/admin/categories', auth, (req, res) => {
   if (!/^[a-z0-9-]+$/.test(slug))
     return err(res, 400, 'slug must be lowercase alphanumeric with hyphens', 'validation_error');
 
-  const existing = db.prepare('SELECT id FROM categories WHERE slug = ?').get(slug);
+  const { rows: existingRows } = await db.query('SELECT id FROM categories WHERE slug = $1', [slug]);
+  const existing = existingRows[0];
   if (existing) return err(res, 409, 'A category with that slug already exists', 'slug_taken');
 
-  const result = db.prepare('INSERT INTO categories (name, slug) VALUES (?, ?)').run(name, slug);
-  res.status(201).json({ success: true, id: result.lastInsertRowid, name, slug });
+  const { rows } = await db.query(
+    'INSERT INTO categories (name, slug) VALUES ($1, $2) RETURNING id',
+    [name, slug]
+  );
+  res.status(201).json({ success: true, id: rows[0].id, name, slug });
 });
 
 // PATCH /api/admin/categories/:id - admin only
-router.patch('/admin/categories/:id', auth, (req, res) => {
+router.patch('/admin/categories/:id', auth, async (req, res) => {
   if (req.user.role !== 'admin') return err(res, 403, 'Admins only', 'forbidden');
 
-  const category = db.prepare('SELECT * FROM categories WHERE id = ?').get(req.params.id);
+  const { rows: categoryRows } = await db.query('SELECT * FROM categories WHERE id = $1', [req.params.id]);
+  const category = categoryRows[0];
   if (!category) return err(res, 404, 'Category not found', 'not_found');
 
   const name = req.body.name ? sanitizeText(req.body.name) : category.name;
-  let slug = req.body.slug ? sanitizeText(req.body.slug) : (req.body.name ? toSlug(name) : category.slug);
+  const slug = req.body.slug ? sanitizeText(req.body.slug) : (req.body.name ? toSlug(name) : category.slug);
 
   if (slug !== category.slug) {
     if (!/^[a-z0-9-]+$/.test(slug))
       return err(res, 400, 'slug must be lowercase alphanumeric with hyphens', 'validation_error');
-    const conflict = db.prepare('SELECT id FROM categories WHERE slug = ? AND id != ?').get(slug, req.params.id);
+    const { rows: conflicts } = await db.query(
+      'SELECT id FROM categories WHERE slug = $1 AND id != $2',
+      [slug, req.params.id]
+    );
+    const conflict = conflicts[0];
     if (conflict) return err(res, 409, 'A category with that slug already exists', 'slug_taken');
   }
 
-  db.prepare('UPDATE categories SET name = ?, slug = ? WHERE id = ?').run(name, slug, req.params.id);
+  await db.query('UPDATE categories SET name = $1, slug = $2 WHERE id = $3', [name, slug, req.params.id]);
   res.json({ success: true, id: Number(req.params.id), name, slug });
 });
 
 // DELETE /api/admin/categories/:id - admin only
-router.delete('/admin/categories/:id', auth, (req, res) => {
+router.delete('/admin/categories/:id', auth, async (req, res) => {
   if (req.user.role !== 'admin') return err(res, 403, 'Admins only', 'forbidden');
 
-  const category = db.prepare('SELECT * FROM categories WHERE id = ?').get(req.params.id);
+  const { rows: categoryRows } = await db.query('SELECT * FROM categories WHERE id = $1', [req.params.id]);
+  const category = categoryRows[0];
   if (!category) return err(res, 404, 'Category not found', 'not_found');
 
-  const productCount = db.prepare('SELECT COUNT(*) as count FROM products WHERE category_id = ?').get(req.params.id).count;
+  const { rows: countRows } = await db.query('SELECT COUNT(*) as count FROM products WHERE category_id = $1', [
+    req.params.id,
+  ]);
+  const productCount = Number(countRows[0].count);
   if (productCount > 0)
     return err(res, 409, 'Cannot delete category with assigned products', 'category_has_products');
 
-  db.prepare('DELETE FROM categories WHERE id = ?').run(req.params.id);
+  await db.query('DELETE FROM categories WHERE id = $1', [req.params.id]);
   res.json({ success: true, message: 'Category deleted' });
 });
 

@@ -11,6 +11,7 @@ const db = require('../db/schema');
 const auth = require('../middleware/auth');
 const cache = require('../cache');
 const upload = require('../middleware/upload');
+const { verifyUploadedFile } = require('../middleware/upload');
 const { err } = require('../middleware/error');
 const { rewriteImageUrl } = require('../utils/cdn');
 const categoriesRouter = require('./categories');
@@ -46,7 +47,7 @@ router.get('/search', async (req, res) => {
 // POST /api/products/upload-image — single image upload (multipart field "image")
 // Returns { imageUrl } for the caller to store on a product or profile.
 router.post('/upload-image', auth, (req, res) => {
-  upload.single('image')(req, res, (uploadErr) => {
+  upload.single('image')(req, res, async (uploadErr) => {
     if (uploadErr) {
       if (uploadErr.code === 'LIMIT_FILE_SIZE')
         return err(res, 400, 'Image must be 5 MB or smaller', 'file_too_large');
@@ -55,19 +56,17 @@ router.post('/upload-image', auth, (req, res) => {
       return err(res, 400, 'Upload failed', 'upload_error');
     }
     if (!req.file) return err(res, 400, 'No image file provided', 'no_file');
-    upload
-      .storeUploadedFile(req.file)
-      .then((file) =>
-        res.status(201).json({ success: true, imageUrl: file.url, objectKey: file.key })
-      )
-      .catch((storeErr) =>
-        err(
-          res,
-          400,
-          storeErr.message || 'Upload failed',
-          storeErr.code === 'INVALID_TYPE' ? 'invalid_file_type' : 'upload_error'
-        )
-      );
+
+    try {
+      // Validate file content with magic-byte detection
+      const verified = await verifyUploadedFile(req.file);
+      res.status(201).json({ success: true, imageUrl: `/uploads/${verified.filename}` });
+    } catch (verifyErr) {
+      if (verifyErr.code === 'INVALID_TYPE') {
+        return err(res, 415, verifyErr.message, 'unsupported_media_type');
+      }
+      return err(res, 400, 'File validation failed', 'validation_error');
+    }
   });
 });
 
