@@ -9,6 +9,7 @@ const { err } = require('../middleware/error');
 const { sanitizeText } = require('../utils/sanitize');
 const { rewriteImageUrl } = require('../utils/cdn');
 const { sendBackInStockEmail } = require('../utils/mailer');
+const { sendPushToUser } = require('../utils/pushNotifications');
 const AutomaticOrderProcessor = require('../services/AutomaticOrderProcessor');
 const logger = require('../logger');
 const { stockClients, broadcastStockUpdate } = require('../utils/stockUpdates');
@@ -39,6 +40,11 @@ function normalizePreorderInput(body) {
     return { error: 'preorder_delivery_date must be provided as YYYY-MM-DD' };
   }
   return { isPreorder, preorderDeliveryDate };
+}
+
+function optionalAuth(req, res, next) {
+  if (!req.headers.authorization) return next();
+  return auth(req, res, next);
 }
 
 /**
@@ -149,13 +155,15 @@ async function listProducts(req, res) {
 
   const payload = { success: true, data: productsWithImages, total, page, limit, totalPages: Math.ceil(total / limit) };
   if (role !== 'farmer') {
-    payload.data = payload.data.map(({ low_stock_threshold, ...rest }) => rest);
+    payload.data = payload.data.map((row) =>
+      Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'low_stock_threshold'))
+    );
   }
   await cache.set(cacheKey, payload, 60);
   res.json(payload);
 }
 
-router.get('/', listProducts);
+router.get('/', optionalAuth, listProducts);
 
 // GET /api/products/allergens — returns the canonical allergen whitelist
 router.get('/allergens', (req, res) => {
@@ -175,21 +183,15 @@ router.get('/categories', async (_req, res) => {
 });
 
 // GET /api/products/search — search alias used by the marketplace client.
-router.get('/search', listProducts);
+router.get('/search', optionalAuth, listProducts);
 
 // GET /api/products/:id
 router.get('/:id', async (req, res) => {
-  const { rows } = await db.query(`
   const product = (await db.query(`
     SELECT p.*, u.name AS farmer_name, u.stellar_public_key AS farmer_wallet
     FROM products p
     JOIN users u ON p.farmer_id = u.id
     WHERE p.id = $1
-  `, [req.params.id]);
-  const product = rows[0];
-  if (!product) return err(res, 404, 'Product not found', 'not_found');
-
-  if (product.available_from && new Date(product.available_from) > new Date()) {
   `, [req.params.id])).rows[0];
   if (!product) return res.status(404).json({ error: 'Product not found' });
 
@@ -307,12 +309,6 @@ router.post('/', auth, requireEmailVerified, validate.product, async (req, res) 
     values
   );
   const productId = rows[0].id;
-  const { rows: inserted } = await db.query(
-    'INSERT INTO products (farmer_id, name, description, price, quantity, unit, weight_kg) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
-    [req.user.id, name, description || '', price, quantity, unit || 'unit', weight_kg != null ? weight_kg : 1.0]
-  );
-
-  const productId = inserted[0].id;
 
   if (available_from) {
     await db.query('INSERT INTO product_scheduling (product_id, available_from) VALUES ($1, $2)', [
@@ -322,44 +318,11 @@ router.post('/', auth, requireEmailVerified, validate.product, async (req, res) 
   }
 
   await cache.delByPattern('products:*');
-  res.json({ id: productId, message: 'Product listed' });
+  res.json({ success: true, id: productId, message: 'Product listed' });
 });
 
 // PUT /api/products/:id/schedule - farmer sets or updates pre-order availability
 router.put('/:id/schedule', auth, async (req, res) => {
-  if (req.user.role !== 'farmer')
-    return res.status(403).json({ error: 'Only farmers can schedule products' });
-
-  const product = (await db.query('SELECT id FROM products WHERE id = $1 AND farmer_id = $2', [req.params.id, req.user.id])).rows[0];
-  if (!product) return res.status(404).json({ error: 'Product not found or not yours' });
-
-  const { available_from } = req.body;
-  if (!available_from)
-    return res.status(400).json({ error: 'available_from required (ISO 8601 datetime)' });
-
-  await db.query(`
-    INSERT INTO product_scheduling (product_id, available_from)
-    VALUES ($1, $2)
-    ON CONFLICT(product_id) DO UPDATE SET available_from = excluded.available_from
-  `, [req.params.id, available_from]);
-
-  res.json({ message: 'Schedule updated', product_id: req.params.id, available_from });
-});
-
-// DELETE /api/products/:id/schedule - farmer removes scheduling (makes immediately available)
-router.delete('/:id/schedule', auth, async (req, res) => {
-  if (req.user.role !== 'farmer')
-    return res.status(403).json({ error: 'Farmers only' });
-
-  const product = (await db.query('SELECT id FROM products WHERE id = $1 AND farmer_id = $2', [req.params.id, req.user.id])).rows[0];
-  if (!product) return res.status(404).json({ error: 'Product not found or not yours' });
-
-  await db.query('DELETE FROM product_scheduling WHERE product_id = $1', [req.params.id]);
-  res.json({ message: 'Schedule removed, product is now immediately available' });
-});
-
-// GET /api/products/mine/list - farmer's own products (includes unscheduled ones)
-router.get('/mine/list', auth, async (req, res) => {
   if (req.user.role !== 'farmer')
     return err(res, 403, 'Only farmers can schedule products', 'forbidden');
 
@@ -380,35 +343,13 @@ router.get('/mine/list', auth, async (req, res) => {
     return err(res, 400, 'available_from must be before available_until', 'validation_error');
 
   await db.query('UPDATE products SET available_from = $1 WHERE id = $2', [available_from, req.params.id]);
+  await db.query(
+    `INSERT INTO product_scheduling (product_id, available_from)
+     VALUES ($1, $2)
+     ON CONFLICT(product_id) DO UPDATE SET available_from = excluded.available_from`,
+    [req.params.id, available_from]
+  );
   await cache.delByPattern('products:*');
-  const { rows: products } = await db.query(`
-    SELECT p.*, ps.available_from
-    FROM products p
-    LEFT JOIN product_scheduling ps ON p.id = ps.product_id
-    WHERE p.farmer_id = $1
-    ORDER BY p.created_at DESC
-  `, [req.user.id]);
-  res.json(products);
-});
-
-// PUT /api/products/:id/schedule - farmer sets or updates pre-order availability
-router.put('/:id/schedule', auth, async (req, res) => {
-  if (req.user.role !== 'farmer')
-    return res.status(403).json({ error: 'Only farmers can schedule products' });
-
-  const product = (await db.query('SELECT id FROM products WHERE id = $1 AND farmer_id = $2', [req.params.id, req.user.id])).rows[0];
-  if (!product) return res.status(404).json({ error: 'Product not found or not yours' });
-
-  const { available_from } = req.body;
-  if (!available_from)
-    return res.status(400).json({ error: 'available_from required (ISO 8601 datetime)' });
-
-  await db.query(`
-    INSERT INTO product_scheduling (product_id, available_from)
-    VALUES ($1, $2)
-    ON CONFLICT(product_id) DO UPDATE SET available_from = excluded.available_from
-  `, [req.params.id, available_from]);
-
   res.json({ message: 'Schedule updated', product_id: req.params.id, available_from });
 });
 
@@ -424,11 +365,8 @@ router.delete('/:id/schedule', auth, async (req, res) => {
   if (!rows[0]) return err(res, 404, 'Product not found or not yours', 'not_found');
 
   await db.query('UPDATE products SET available_from = NULL WHERE id = $1', [req.params.id]);
-  await cache.delByPattern('products:*');
-  const product = (await db.query('SELECT id FROM products WHERE id = $1 AND farmer_id = $2', [req.params.id, req.user.id])).rows[0];
-  if (!product) return res.status(404).json({ error: 'Product not found or not yours' });
-
   await db.query('DELETE FROM product_scheduling WHERE product_id = $1', [req.params.id]);
+  await cache.delByPattern('products:*');
   res.json({ message: 'Schedule removed, product is now immediately available' });
 });
 
@@ -438,18 +376,14 @@ router.get('/mine/list', auth, async (req, res) => {
     return err(res, 403, 'Farmers only', 'forbidden');
 
   const { rows } = await db.query(
-    'SELECT * FROM products WHERE farmer_id = $1 ORDER BY created_at DESC',
+    `SELECT p.*, ps.available_from
+     FROM products p
+     LEFT JOIN product_scheduling ps ON p.id = ps.product_id
+     WHERE p.farmer_id = $1
+     ORDER BY p.created_at DESC`,
     [req.user.id]
   );
   res.json({ success: true, data: rows });
-  const { rows: products } = await db.query(`
-    SELECT p.*, ps.available_from
-    FROM products p
-    LEFT JOIN product_scheduling ps ON p.id = ps.product_id
-    WHERE p.farmer_id = $1
-    ORDER BY p.created_at DESC
-  `, [req.user.id]);
-  res.json(products);
 });
 
 // PATCH /api/products/:id
@@ -752,18 +686,6 @@ router.post('/:id/images', auth, async (req, res) => {
   });
 });
 
-// GET /api/products/:id
-router.get('/:id', async (req, res) => {
-  const product = (await db.query(`
-    SELECT p.*, u.name as farmer_name, u.stellar_public_key as farmer_wallet,
-           COALESCE(p.avg_rating, 0) as avg_rating,
-           COALESCE(p.review_count, 0) as review_count
-    FROM products p JOIN users u ON p.farmer_id = u.id WHERE p.id = $1
-  `, [req.params.id])).rows[0];
-  if (!product) return err(res, 404, 'Product not found', 'not_found');
-  res.json({ success: true, data: product });
-});
-
 // DELETE /api/products/:id/images/:imgId
 router.delete('/:id/images/:imgId', auth, async (req, res) => {
   if (req.user.role !== 'farmer') return err(res, 403, 'Only farmers can delete images', 'forbidden');
@@ -775,7 +697,14 @@ router.delete('/:id/images/:imgId', auth, async (req, res) => {
   await db.query('DELETE FROM product_images WHERE id = $1', [req.params.imgId]);
   const fs = require('fs');
   const filePath = require('path').join(__dirname, '../../uploads', require('path').basename(iRows[0].url));
-  try { fs.unlinkSync(filePath); } catch {}
+  try {
+    fs.unlinkSync(filePath);
+  } catch (error) {
+    logger.warn('Unable to remove deleted product image from disk', {
+      error: error.message,
+      filePath,
+    });
+  }
 
   const { rows: firstRows } = await db.query(
     'SELECT url FROM product_images WHERE product_id = $1 ORDER BY sort_order ASC, id ASC LIMIT 1',
