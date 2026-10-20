@@ -217,6 +217,8 @@
     "default": "(افتراضي)",
     "flashSaleTitle": "عرض سريع",
     "flashSaleBanner": "عرض ترويجي سريع",
+    "flashSaleSavings": "وفّر {{pct}}%",
+    "ordersLoadError": "تعذّر تحميل طلباتك — يُرجى المحاولة مرة أخرى"
     "flashSaleSavings": "وفّر {{pct}}%"
   },
   "wallet": {
@@ -264,6 +266,21 @@
   },
   "pagination": {
     "resultCount_one": "نتيجة {{count}}",
+    "resultCount_other": "{{count}} نتيجة",
+    "resultCount_zero": "لا توجد نتائج",
+    "resultCount_two": "نتيجتان",
+    "resultCount_few": "{{count}} نتائج",
+    "resultCount_many": "{{count}} نتيجةً"
+  },
+  "compare": {
+    "title": "مقارنة المنتجات",
+    "description": "قارن منتجات السوق المحددة جنبًا إلى جنب. حدد ما يصل إلى أربعة منتجات في السوق لعرضها هنا.",
+    "exportCsv": "تصدير CSV",
+    "printPdf": "طباعة / حفظ كملف PDF",
+    "noProducts": "لم يتم تحديد أي منتجات للمقارنة بعد.",
+    "selectTwo": "حدد منتجين على الأقل لمقارنتهما جنبًا إلى جنب.",
+    "backToMarketplace": "العودة إلى السوق",
+    "attribute": "السمة",
     "resultCount_other": "{{count}} نتيجة"
   },
   "compare": {
@@ -284,6 +301,12 @@
     "grade": "الدرجة",
     "weight": "الوزن",
     "allergens": "مسببات الحساسية",
+    "freshness": "النضارة",
+    "none": "لا يوجد",
+    "noReviews": "لا توجد مراجعات",
+    "expired": "منتهي الصلاحية",
+    "expiresToday": "تنتهي صلاحيته اليوم",
+    "daysLeft": "متبقٍ {{days}} يوم"
     "freshness": "الطزاجة",
     "none": "لا شيء",
     "noReviews": "لا توجد مراجعات",
