@@ -56,6 +56,11 @@ const JOBS = [
     run: () => require('./cleanupPushSubscriptions').cleanupExpiredPushSubscriptions(),
   },
   {
+    name: 'idempotency-key-purge',
+    cron: '30 * * * *', // hourly
+    run: () => require('./purgeIdempotencyKeys').purgeIdempotencyKeys(),
+  },
+  {
     name: 'product-expiry-scheduling',
     cron: '0 2 * * *',
     run: () => require('./deactivateExpiredProducts').runSchedulingJob(),
@@ -102,6 +107,13 @@ const JOBS = [
     intervalMs: 5 * MINUTE,
     runOnStart: true,
     run: () => require('./contractMonitor').runMonitoringJob(),
+  },
+  {
+    name: 'escrow-reconciliation',
+    intervalMs: parseInt(process.env.ESCROW_RECONCILE_INTERVAL_MS || String(15 * MINUTE), 10),
+    runOnStart: true,
+    enabled: () => !!config.sorobanEscrowContractId,
+    run: () => require('./reconcileEscrow').reconcileEscrow(),
   },
   {
     name: 'contract-registry-sync',

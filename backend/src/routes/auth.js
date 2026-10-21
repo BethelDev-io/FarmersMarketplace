@@ -6,6 +6,7 @@ const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
 const db = require('../db/schema');
 const { currentTimestamp } = require('../db/dialect');
+const { invalidateAuthStatus } = require('../cache');
 const {
   createWalletFromMnemonic,
   deriveKeypairFromMnemonic,
@@ -93,7 +94,10 @@ const COOKIE_OPTIONS = {
 };
 
 function signAccessToken(payload) {
-  return jwt.sign(payload, getJwtSecret(), { expiresIn: ACCESS_TOKEN_TTL });
+  return jwt.sign({ ...payload, typ: 'access' }, getJwtSecret(), {
+    algorithm: 'HS256',
+    expiresIn: ACCESS_TOKEN_TTL,
+  });
 }
 
 function getJwtSecret() {
@@ -428,7 +432,7 @@ router.get('/stream-token', auth, (req, res) => {
   const token = jwt.sign(
     { id: req.user.id, scope: 'stream' },
     getJwtSecret(),
-    { expiresIn: '60s' }
+    { algorithm: 'HS256', expiresIn: '60s' }
   );
   res.json({ token, expiresIn: 60 });
 });
@@ -509,6 +513,7 @@ router.post('/deactivate', auth, async (req, res) => {
   await db.query('UPDATE users SET active = 0, deactivated_at = CURRENT_TIMESTAMP WHERE id = $1', [
     req.user.id,
   ]);
+  await invalidateAuthStatus(req.user.id);
 
   // Revoke all sessions
   await db.query('DELETE FROM refresh_tokens WHERE user_id = $1', [req.user.id]);
@@ -545,6 +550,7 @@ router.delete('/account', auth, async (req, res) => {
 
   // Delete user — cascade handles related rows (orders, refresh_tokens, etc.)
   await db.query('DELETE FROM users WHERE id = $1', [req.user.id]);
+  await invalidateAuthStatus(req.user.id);
 
   // Clear the refresh token cookie
   res.clearCookie('refreshToken', { path: '/api/v1/auth' });
@@ -565,6 +571,24 @@ router.post('/seed-phrase', auth, requireStepUp2FA, validate.confirmPassword, as
 
   const valid = await bcrypt.compare(password, user.password);
   if (!valid) return err(res, 401, 'Incorrect password', 'invalid_credentials');
+
+  // Revealing the seed phrase also requires a TOTP code when 2FA is enabled.
+  const { rows: tfaRows } = await db.query(
+    'SELECT totp_secret, enabled FROM user_2fa_settings WHERE user_id = $1',
+    [req.user.id]
+  );
+  const tfa = tfaRows[0];
+  if (tfa && tfa.enabled === 1) {
+    const code = String(req.body.totp || '').trim();
+    if (!code) return err(res, 401, 'Two-factor code required', 'totp_required');
+    const ok = speakeasy.totp.verify({
+      secret: tfa.totp_secret,
+      encoding: 'base32',
+      token: code,
+      window: 1,
+    });
+    if (!ok) return err(res, 401, 'Invalid two-factor code', 'invalid_code');
+  }
 
   if (!user.stellar_mnemonic) {
     return err(

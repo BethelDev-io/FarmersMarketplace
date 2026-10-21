@@ -9,6 +9,7 @@ import { api } from '../api/client';
 import Spinner from '../components/Spinner';
 import ConfirmDialog from '../components/ConfirmDialog';
 
+import { getErrorMessage } from '../utils/errorMessages';
 const FREQUENCIES = ['weekly', 'biweekly', 'monthly'];
 const FREQ_LABEL = { weekly: 'Every week', biweekly: 'Every 2 weeks', monthly: 'Every month' };
 
@@ -90,7 +91,7 @@ export default function Subscriptions() {
         const data = await res.json();
         if (!cancelled) setSubscriptions(data.subscriptions || []);
       } catch (err) {
-        if (!cancelled) setError(err.message);
+        if (!cancelled) setError(getErrorMessage(err));
       } finally {
         if (!cancelled) setLoading(false);
       }

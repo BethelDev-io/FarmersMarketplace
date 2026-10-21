@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
+import NotFound from './NotFound';
 
+import { getErrorMessage } from '../utils/errorMessages';
 const PAGE_SIZE = 9;
 
 const s = {
@@ -139,7 +141,7 @@ function StreamModal({ farmerId, onClose }) {
       });
       setMsg({ type: 'ok', text: 'Payment stream started.' });
     } catch (e) {
-      setMsg({ type: 'err', text: e.message || 'Failed to start payment stream.' });
+      setMsg({ type: 'err', text: getErrorMessage(e) });
     } finally {
       setSubmitting(false);
     }
@@ -308,17 +310,7 @@ export default function FarmerProfile() {
 
   if (loading) return <ProfileSkeleton />;
 
-  if (notFound) {
-    return (
-      <div style={{ ...s.page, textAlign: 'center', paddingTop: 60 }}>
-        <div style={{ fontSize: 48, marginBottom: 12 }}>🌾</div>
-        <div style={{ fontSize: 18, color: '#888' }}>Farmer not found.</div>
-        <button style={{ marginTop: 16, ...s.back }} onClick={() => navigate('/marketplace')}>
-          ← Back to Marketplace
-        </button>
-      </div>
-    );
-  }
+  if (notFound) return <NotFound />;
 
   return (
     <div style={s.page}>
@@ -342,6 +334,21 @@ export default function FarmerProfile() {
               ))}
             </div>
           )}
+          {cooperatives.length > 0 && (
+            <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {cooperatives.map(coop => (
+                <button
+                  key={coop.id}
+                  style={s.coopBadgeInner}
+                  onClick={() => setSelectedCoop(coop)}
+                  aria-label={`Member of cooperative: ${coop.name}. Click for details.`}
+                  title={`Cooperative: ${coop.name}${coop.description ? ' — ' + coop.description : ''}`}
+                >
+                  🤝 Member of: {coop.name}
+                </button>
+              ))}
+            </div>
+          )}
           {farmer.location && <div style={s.location}>📍 {farmer.location}</div>}
           {farmer.bio
             ? <div style={s.bio}>{farmer.bio}</div>
@@ -358,28 +365,7 @@ export default function FarmerProfile() {
 
       {showStreamModal && (
         <StreamModal farmerId={farmer.id} onClose={() => setShowStreamModal(false)} />
-          {farmer.verified && (
-            <div style={s.verifiedBadge}>✔ Verified Farmer</div>
-          )}
-
-          {/* Cooperative membership badges */}
-          {cooperatives.length > 0 && (
-            <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-              {cooperatives.map(coop => (
-                <button
-                  key={coop.id}
-                  style={s.coopBadgeInner}
-                  onClick={() => setSelectedCoop(coop)}
-                  aria-label={`Member of cooperative: ${coop.name}. Click for details.`}
-                  title={`Cooperative: ${coop.name}${coop.description ? ' — ' + coop.description : ''}`}
-                >
-                  🤝 Member of: {coop.name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* Cooperative detail modal */}
       {selectedCoop && (

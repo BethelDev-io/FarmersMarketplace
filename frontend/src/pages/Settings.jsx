@@ -1,9 +1,11 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { validatePassword } from '../utils/validation';
 import TwoFactorAuth from '../components/TwoFactorAuth';
+import { getErrorMessage } from '../utils/errorMessages';
 
 const s = {
   page:    { maxWidth: 640, margin: '0 auto', padding: 24 },
@@ -114,7 +116,7 @@ function PasswordChangeForm() {
       setMsg({ type: 'ok', text: 'Password updated successfully.' });
       setForm({ current: '', newPw: '', confirm: '' });
     } catch (err) {
-      setMsg({ type: 'err', text: err.message || 'Failed to update password.' });
+      setMsg({ type: 'err', text: getErrorMessage(err) });
     } finally {
       setSaving(false);
     }
@@ -190,7 +192,7 @@ function SettingsAccountBody() {
       const result = await api.mergeWallet({ destination: mergeDestination, password: mergePassword });
       setMergeSuccess(`Merge complete. TX: ${result.txHash}`);
     } catch (e) {
-      setMergeError(e.message || 'Merge failed. Please try again.');
+      setMergeError(getErrorMessage(e));
     } finally {
       setMerging(false);
     }
@@ -228,7 +230,7 @@ function SettingsAccountBody() {
         setBalanceInfo({ balance: e.data.balance, publicKey: e.data.publicKey });
         setStep('balance_warning');
       } else {
-        setError(e.message || 'Deletion failed. Please try again.');
+        setError(getErrorMessage(e));
       }
     } finally {
       setDeleting(false);
@@ -406,41 +408,95 @@ function SettingsAccountBody() {
 }
 
 // ── Seed Phrase Backup Section ────────────────────────────────────────────────
+const SEED_AUTO_HIDE_MS = 60_000;
+const CLIPBOARD_CLEAR_MS = 60_000;
+const VERIFY_POSITIONS = [3, 7, 11];
+// Keep browsers, translators and extensions from processing the phrase.
+const SENSITIVE_TEXT_PROPS = { autoComplete: 'off', spellCheck: false, translate: 'no', className: 'notranslate' };
+
 function SeedPhraseBackup() {
   const [password, setPassword]   = useState('');
+  const [totp, setTotp]           = useState('');
+  const [needsTotp, setNeedsTotp] = useState(false);
   const [mnemonic, setMnemonic]   = useState(null);
+  const [revealed, setRevealed]   = useState(false);
   const [copied, setCopied]       = useState(false);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState('');
   const [confirmed, setConfirmed] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [answers, setAnswers]     = useState({});
+  const [verifyResult, setVerifyResult] = useState(null);
+  const hideTimer = useRef(null);
+  const clipboardTimer = useRef(null);
+
+  useEffect(() => {
+    api.get2FAStatus().then(d => setNeedsTotp(!!d?.enabled)).catch(() => {});
+  }, []);
+
+  const handleHide = useCallback(() => {
+    clearTimeout(hideTimer.current);
+    setMnemonic(null);
+    setRevealed(false);
+    setConfirmed(false);
+    setCopied(false);
+    setVerifying(false);
+    setAnswers({});
+    setVerifyResult(null);
+  }, []);
+
+  // Auto-hide after 60 s and wipe the phrase from state on unmount.
+  useEffect(() => {
+    if (!mnemonic) return undefined;
+    hideTimer.current = setTimeout(handleHide, SEED_AUTO_HIDE_MS);
+    return () => clearTimeout(hideTimer.current);
+  }, [mnemonic, handleHide]);
+
+  useEffect(() => () => {
+    clearTimeout(hideTimer.current);
+    setMnemonic(null);
+  }, []);
 
   async function handleReveal(e) {
     e.preventDefault();
     setError('');
     if (!password) return setError('Please enter your password.');
+    if (needsTotp && !/^\d{6}$/.test(totp)) return setError('Please enter your 6-digit authenticator code.');
     setLoading(true);
     try {
-      const data = await api.getSeedPhrase(password);
+      const data = await api.getSeedPhrase(password, needsTotp ? totp : undefined);
       setMnemonic(data.mnemonic);
       setPassword('');
+      setTotp('');
     } catch (err) {
-      setError(err.message || 'Failed to retrieve seed phrase.');
+      if (err.code === 'totp_required') setNeedsTotp(true);
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
   }
 
   function handleCopy() {
-    navigator.clipboard.writeText(mnemonic).then(() => {
+    const phrase = mnemonic;
+    navigator.clipboard.writeText(phrase).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
+      clearTimeout(clipboardTimer.current);
+      // Best effort: only clear the clipboard if it still holds the phrase.
+      clipboardTimer.current = setTimeout(async () => {
+        try {
+          const current = await navigator.clipboard.readText();
+          if (current === phrase) await navigator.clipboard.writeText('');
+        } catch { /* clipboard read not permitted — nothing more we can do */ }
+      }, CLIPBOARD_CLEAR_MS);
     });
   }
 
-  function handleHide() {
-    setMnemonic(null);
-    setConfirmed(false);
-    setCopied(false);
+  function handleVerify(e) {
+    e.preventDefault();
+    const ok = VERIFY_POSITIONS.every(
+      pos => (answers[pos] || '').trim().toLowerCase() === words[pos - 1]
+    );
+    setVerifyResult(ok);
   }
 
   const words = mnemonic ? mnemonic.split(' ') : [];
@@ -454,7 +510,7 @@ function SeedPhraseBackup() {
       </p>
 
       {!mnemonic ? (
-        <form onSubmit={handleReveal} noValidate>
+        <form onSubmit={handleReveal} noValidate autoComplete="off">
           <div style={s.warn}>
             ⚠️ Your seed phrase gives full access to your wallet. Only view it in a private location.
           </div>
@@ -468,6 +524,21 @@ function SeedPhraseBackup() {
             autoComplete="current-password"
             placeholder="Enter your password"
           />
+          {needsTotp && (
+            <>
+              <label style={{ ...s.label, marginTop: 10 }} htmlFor="sp-totp">Authenticator code</label>
+              <input
+                id="sp-totp"
+                style={s.input}
+                inputMode="numeric"
+                maxLength={6}
+                value={totp}
+                onChange={e => setTotp(e.target.value.replace(/\D/g, ''))}
+                autoComplete="one-time-code"
+                placeholder="123456"
+              />
+            </>
+          )}
           {error && <div style={s.err} role="alert">{error}</div>}
           <button style={s.btn} type="submit" disabled={loading}>
             {loading ? 'Verifying…' : 'Reveal Seed Phrase'}
@@ -476,11 +547,23 @@ function SeedPhraseBackup() {
       ) : (
         <div>
           <div style={{ ...s.warn, background: '#fdecea', border: '1px solid #e57373', color: '#b71c1c' }}>
-            🚨 Write these words down in order and store them offline. This is the only time they will be shown.
+            🚨 Write these words down in order and store them offline. They hide automatically after 60 seconds.
             Never screenshot or share them.
           </div>
 
-          <div style={s.wordGrid} aria-label="Seed phrase words">
+          <div
+            style={{ ...s.wordGrid, filter: revealed ? 'none' : 'blur(6px)', transition: 'filter 0.15s', userSelect: revealed ? 'text' : 'none' }}
+            aria-label="Seed phrase words"
+            aria-hidden={!revealed}
+            translate="no"
+            className="notranslate"
+            spellCheck={false}
+            onMouseDown={() => setRevealed(true)}
+            onMouseUp={() => setRevealed(false)}
+            onMouseLeave={() => setRevealed(false)}
+            onTouchStart={() => setRevealed(true)}
+            onTouchEnd={() => setRevealed(false)}
+          >
             {/* Seed words can repeat, and the list is static and never reordered,
                 so the position is the identity here. */}
             {words.map((word, i) => (
@@ -491,6 +574,7 @@ function SeedPhraseBackup() {
               </div>
             ))}
           </div>
+          <p style={{ fontSize: 12, color: '#888', marginTop: 6 }}>Press and hold the words, or use “Show”, to reveal them.</p>
 
           <div style={{ marginTop: 16, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
@@ -503,12 +587,46 @@ function SeedPhraseBackup() {
             </label>
           </div>
 
-          <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-            <button style={s.btnSm} onClick={handleCopy} disabled={!confirmed}>
+          <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button style={s.btnSm} type="button" onClick={() => setRevealed(r => !r)}>
+              {revealed ? 'Blur' : 'Show'}
+            </button>
+            <button style={s.btnSm} type="button" onClick={handleCopy} disabled={!confirmed}>
               {copied ? '✓ Copied' : 'Copy to clipboard'}
             </button>
-            <button style={s.btnGray} onClick={handleHide}>Hide</button>
+            <button style={s.btnSm} type="button" onClick={() => { setVerifying(true); setRevealed(false); }} disabled={!confirmed}>
+              Verify backup
+            </button>
+            <button style={s.btnGray} type="button" onClick={handleHide}>Hide</button>
           </div>
+
+          {copied && (
+            <div style={{ ...s.warn, marginTop: 12 }} role="status">
+              ⚠️ Your seed phrase is on the clipboard. Paste it somewhere safe now — we will try to clear the clipboard in 60 seconds.
+            </div>
+          )}
+
+          {verifying && (
+            <form onSubmit={handleVerify} noValidate autoComplete="off" style={{ marginTop: 14 }}>
+              <p style={{ fontSize: 13, color: '#555', marginBottom: 8 }}>Enter words {VERIFY_POSITIONS.join(', ')} to confirm your backup.</p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {VERIFY_POSITIONS.map(pos => (
+                  <input
+                    key={pos}
+                    aria-label={`Word ${pos}`}
+                    placeholder={`Word ${pos}`}
+                    style={{ ...s.input, width: 120 }}
+                    value={answers[pos] || ''}
+                    onChange={e => setAnswers(a => ({ ...a, [pos]: e.target.value }))}
+                    {...SENSITIVE_TEXT_PROPS}
+                  />
+                ))}
+              </div>
+              <button style={s.btnSm} type="submit">Check</button>
+              {verifyResult === true && <div style={s.ok} role="status">✓ Backup verified.</div>}
+              {verifyResult === false && <div style={s.err} role="alert">Those words don't match. Check your written backup.</div>}
+            </form>
+          )}
         </div>
       )}
     </div>
@@ -547,7 +665,7 @@ function AccountRecovery() {
       setSuccess('Wallet recovered successfully. Redirecting…');
       setTimeout(() => navigate(data.user.role === 'farmer' ? '/dashboard' : '/marketplace'), 1500);
     } catch (err) {
-      setError(err.message || 'Recovery failed. Check your credentials and seed phrase.');
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -617,7 +735,7 @@ function ProfileSettings({ showToast }) {
       await api.updateProfile(form);
       showToast('ok', 'Settings saved successfully.');
     } catch (err) {
-      showToast('err', err.message || 'Failed to save settings.');
+      showToast('err', getErrorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -651,6 +769,112 @@ function ProfileSettings({ showToast }) {
   );
 }
 
+// ── Push Notification Settings ───────────────────────────────────────────────
+function urlB64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const output = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i += 1) output[i] = rawData.charCodeAt(i);
+  return output;
+}
+
+function PushNotificationSettings() {
+  const supported = 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window;
+  const [permission, setPermission] = useState(supported ? Notification.permission : 'unsupported');
+  const [subscribed, setSubscribed] = useState(false);
+  const [busy, setBusy]             = useState(false);
+  const [msg, setMsg]               = useState(null);
+
+  useEffect(() => {
+    if (!supported) return;
+    navigator.serviceWorker.ready
+      .then((reg) => reg.pushManager.getSubscription())
+      .then((subscription) => setSubscribed(!!subscription))
+      .catch(() => {});
+  }, [supported]);
+
+  // Only ever runs from a click, so the browser prompt is user-initiated.
+  async function handleEnable() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const result = await Notification.requestPermission();
+      setPermission(result);
+      if (result !== 'granted') return;
+
+      const reg = await navigator.serviceWorker.ready;
+      let subscription = await reg.pushManager.getSubscription();
+      if (!subscription) {
+        const keyRes = await api.getPushPublicKey();
+        const publicKey = keyRes?.data?.publicKey;
+        if (!publicKey) throw new Error('Push notifications are not configured on the server.');
+        subscription = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlB64ToUint8Array(publicKey),
+        });
+      }
+
+      await api.subscribePush(subscription);
+      setSubscribed(true);
+      setMsg({ type: 'ok', text: 'Push notifications enabled.' });
+    } catch (err) {
+      setMsg({ type: 'err', text: err.message || 'Failed to enable push notifications.' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDisable() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await api.unsubscribePush();
+      const reg = await navigator.serviceWorker.ready;
+      const subscription = await reg.pushManager.getSubscription();
+      if (subscription) await subscription.unsubscribe();
+      setSubscribed(false);
+      setMsg({ type: 'ok', text: 'Push notifications disabled.' });
+    } catch (err) {
+      setMsg({ type: 'err', text: err.message || 'Failed to disable push notifications.' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={s.card}>
+      <div style={s.section}>Notifications</div>
+      {!supported ? (
+        <div style={s.desc}>Push notifications are not supported in this browser.</div>
+      ) : (
+        <>
+          <div style={s.desc}>
+            Browser permission: <strong>{permission}</strong>
+            {permission === 'denied' && (
+              <>. Notifications are blocked for this site. To turn them on, allow notifications in your browser's site settings and reload this page.</>
+            )}
+          </div>
+          {permission !== 'denied' && (subscribed ? (
+            <button style={s.btnGhost} onClick={handleDisable} disabled={busy}>
+              {busy ? 'Working…' : 'Disable push notifications'}
+            </button>
+          ) : (
+            <button style={s.btn} onClick={handleEnable} disabled={busy}>
+              {busy ? 'Working…' : 'Enable push notifications'}
+            </button>
+          ))}
+        </>
+      )}
+      {msg && (
+        <div role={msg.type === 'ok' ? 'status' : 'alert'} style={msg.type === 'ok' ? s.ok : s.err}>
+          {msg.text}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Settings Page ────────────────────────────────────────────────────────
 export default function Settings() {
   const { user } = useAuth();
@@ -663,6 +887,7 @@ export default function Settings() {
       {user ? (
         <>
           <ProfileSettings showToast={showToast} />
+          <PushNotificationSettings />
           <SettingsAccountBody />
           <PasswordChangeForm />
           <TwoFactorAuth />
