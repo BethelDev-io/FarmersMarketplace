@@ -406,6 +406,7 @@ registerRoute('/', '/auth', require('./emailVerification'));
 registerRoute('/', '/auth', require('./authPasswordReset'));
 registerRoute('/', '/products', require('./products'));
 registerRoute('/', '/orders', require('./orderBudgetGuard'));
+registerRoute('/', '/orders', require('./orderReceipt'));
 registerRoute('/', '/orders', require('./orders'));
 registerRoute('/', '/orders/:id/return', require('./returns'));
 registerRoute('/', '/disputes', require('./disputes'));

@@ -8,6 +8,37 @@ const requireEmailVerified = require('../middleware/requireEmailVerified');
 const { err } = require('../middleware/error');
 const logger = require('../logger');
 
+const MIN_MINUTES = parseInt(process.env.MIN_AUCTION_DURATION_MINUTES ?? '5', 10);
+const ANTI_SNIPE_WINDOW_MS = parseInt(process.env.AUCTION_ANTI_SNIPE_WINDOW_MS || String(5 * 60 * 1000), 10);
+const ANTI_SNIPE_EXTENSION_MS = parseInt(process.env.AUCTION_ANTI_SNIPE_EXTENSION_MS || String(5 * 60 * 1000), 10);
+
+function validateBody(schema) {
+  return (req, res, next) => {
+    const result = schema.safeParse(req.body);
+    if (!result.success) {
+      const msg = result.error.issues[0]?.message || 'Validation error';
+      return err(res, 400, msg, 'validation_error');
+    }
+    req.body = result.data;
+    next();
+  };
+}
+
+const createAuctionSchema = z.object({
+  product_id:    z.coerce.number().int().positive(),
+  start_price:   z.coerce.number().positive(),
+  reserve_price: z.coerce.number().positive().optional(),
+  min_increment: z.coerce.number().min(0).optional().default(0),
+  ends_at: z.string().datetime({ offset: true }).refine(
+    (v) => new Date(v) >= new Date(Date.now() + MIN_MINUTES * 60 * 1000),
+    `ends_at must be at least ${MIN_MINUTES} minutes in the future`
+  ),
+});
+
+const bidSchema = z.object({
+  amount: z.coerce.number().positive('amount must be a positive number'),
+});
+
 // ── POST /api/auctions ────────────────────────────────────────────────────────
 router.post('/', auth, requireEmailVerified, validate.auction, async (req, res) => {
   if (req.user.role !== 'farmer') return err(res, 403, 'Farmers only', 'forbidden');
@@ -159,8 +190,8 @@ async function placeBidPostgres({ auctionId, buyerId, amount }) {
       amount,
     ]);
     await client.query(
-      'UPDATE auctions SET current_bid = $1, highest_bidder_id = $2 WHERE id = $3',
-      [amount, buyerId, auctionId]
+      'UPDATE auctions SET current_bid = $1, highest_bidder_id = $2, ends_at = CASE WHEN ends_at <= $4 THEN $5 ELSE ends_at END WHERE id = $3',
+      [amount, buyerId, auctionId, new Date(Date.now() + ANTI_SNIPE_WINDOW_MS).toISOString(), new Date(Date.now() + ANTI_SNIPE_EXTENSION_MS).toISOString()]
     );
 
     await client.query('COMMIT');
@@ -187,9 +218,9 @@ async function placeBidSqlite({ auctionId, buyerId, amount }) {
   if (!validation.ok) return validation;
 
   const upd = await db.query(
-    `UPDATE auctions SET current_bid = $1, highest_bidder_id = $2
+    `UPDATE auctions SET current_bid = $1, highest_bidder_id = $2, ends_at = CASE WHEN ends_at <= $5 THEN $6 ELSE ends_at END
      WHERE id = $3 AND COALESCE(current_bid, -1) = COALESCE($4, -1)`,
-    [amount, buyerId, auctionId, auction.current_bid]
+    [amount, buyerId, auctionId, auction.current_bid, new Date(Date.now() + ANTI_SNIPE_WINDOW_MS).toISOString(), new Date(Date.now() + ANTI_SNIPE_EXTENSION_MS).toISOString()]
   );
   if (!upd.rowCount) return fail(409, 'Bid superseded, please retry', 'bid_conflict');
 
@@ -222,17 +253,14 @@ function validateBidRules(auction, buyerId, amount) {
     return fail(403, 'Auction owner cannot bid on their own auction', 'forbidden');
 
   const floor = auction.current_bid ?? auction.start_price;
-  const minRequired = floor + (auction.min_increment ?? 0);
+  const requiredIncrement = Math.max(Number(auction.min_increment || 0), floor * 0.01, 0.1);
+  const minRequired = floor + requiredIncrement;
 
   if (amount <= floor)
     return fail(400, `Bid must be greater than current bid of ${floor}`, 'bid_too_low');
 
-  if (auction.min_increment > 0 && amount < minRequired)
-    return fail(
-      400,
-      `Bid must be at least ${minRequired} (current bid + minimum increment of ${auction.min_increment})`,
-      'bid_below_increment'
-    );
+  if (amount < minRequired)
+    return fail(400, `Bid must be at least ${minRequired} (current bid + minimum increment)`, 'bid_below_increment');
 
   if (auction.highest_bidder_id === buyerId)
     return fail(400, 'You are already the highest bidder', 'already_highest');
