@@ -14,6 +14,7 @@ const REFRESH_TIMEOUT_MS = 10000;
 let accessToken = null;
 let loadingCallback = null;
 let logoutCallback = null;
+let emailNotVerifiedCallback = null;
 // The in-flight refresh, shared by every concurrent 401 (#1381).
 let refreshPromise = null;
 // Latched when a refresh fails so a burst of 401s ends the session once.
@@ -35,6 +36,10 @@ export function setLoadingCallback(fn) {
 
 export function setLogoutCallback(fn) {
   logoutCallback = typeof fn === 'function' ? fn : null;
+}
+
+export function setEmailNotVerifiedCallback(fn) {
+  emailNotVerifiedCallback = typeof fn === 'function' ? fn : null;
 }
 
 function getCsrfToken() {
@@ -204,9 +209,16 @@ async function request(path, options = {}, retry = true, csrfRetry = true) {
       return request(path, options, retry, false);
     }
     if (!res.ok) {
+      // Still thrown to the caller; the global banner is an extra signal (#1390).
+      if (data.code === 'email_not_verified' && emailNotVerifiedCallback) emailNotVerifiedCallback();
       const err = new Error(data.message || data.error || 'Request failed');
       err.code = data.code;
       err.status = res.status;
+      if (data.details) err.details = data.details;
+      const reset = res.headers?.get?.('RateLimit-Reset') || res.headers?.get?.('Retry-After');
+      if (reset != null && !Number.isNaN(Number(reset))) err.retryAfter = Number(reset);
+      // Seconds until a rate-limited or locked-out request may be retried.
+      err.retryAfter = Number(res.headers.get('Retry-After')) || null;
       throw err;
     }
     return data;
@@ -246,9 +258,14 @@ export const api = {
   logout: () => request('/auth/logout', { method: 'POST' }),
   refresh: () => refreshAccessToken(),
   getCurrentUser: () => request('/auth/me'),
+  forgotPassword: (email) => request('/auth/forgot-password', { method: 'POST', body: { email } }),
+  resetPassword: (token, password) => request('/auth/reset-password', { method: 'POST', body: { token, password } }),
+  verifyEmail: (token) => request(`/auth/verify-email?token=${encodeURIComponent(token)}`),
+  resendVerification: (email) => request('/auth/resend-verification', { method: 'POST', body: { email } }),
 
   getProducts: (filters = {}) => request(`/products${toQs(filters)}`),
   getCategories: () => request('/products/categories'),
+  getCategoryList: () => request('/categories'),
   getProduct: (id, options) => request(`/products/${id}`, options),
   createProduct: (body) => request('/products', { method: 'POST', body }),
   getMyProducts: () => request('/products/mine/list'),
@@ -370,9 +387,11 @@ export const api = {
     const { token } = await request('/auth/stream-token');
     return `/api/orders/stream?token=${encodeURIComponent(token || '')}`;
   },
-  getWalletStreamUrl: () => `/api/wallet/stream?token=${encodeURIComponent(accessToken || '')}`,
-  getOrdersStreamUrl: () => `/api/orders/stream?token=${encodeURIComponent(accessToken || '')}`,
-  getMessagesStreamUrl: () => `/api/messages/events?token=${encodeURIComponent(accessToken || '')}`,
+  // Each call mints a single-use ticket, so request a new URL for every (re)connect.
+  getMessagesStreamUrl: async () => {
+    const { ticket } = await request('/messages/stream-ticket', { method: 'POST' });
+    return `${BASE}/messages/events?ticket=${encodeURIComponent(ticket || '')}`;
+  },
   getStockStreamUrl: (productId) => `${BASE}/products/${encodeURIComponent(productId)}/stock-stream`,
   getUnreadMessageCount: () => request('/messages/unread-count'),
 
@@ -494,7 +513,9 @@ export const api = {
     request(`/contracts/${contractId}/simulate`, { method: 'POST', body: { method, args } }),
   getBudget: () => request('/wallet/budget'),
   setBudget: (monthly_budget) => request('/wallet/budget', { method: 'PATCH', body: { monthly_budget } }),
-  withdrawFunds: (destination, amount) => request('/wallet/withdraw', { method: 'POST', body: { destination, amount } }),
+  withdrawFunds: (destination, amount, extra = {}) =>
+    request('/wallet/withdraw', { method: 'POST', body: { destination, amount, ...extra } }),
+  checkAccountExists: (address) => request(`/wallet/account-exists?address=${encodeURIComponent(address)}`),
   getContractEvents: (contractId, params = {}) => request(`/contracts/${contractId}/events${toQs(params)}`),
 
   // Subscriptions
@@ -511,7 +532,9 @@ export const api = {
   importProductsPreview: (products) => request('/products/import', { method: 'POST', body: { products } }),
   importProductsConfirm: (products) => request('/products/import/confirm', { method: 'POST', body: { products } }),
   // Seed phrase backup & recovery
-  getSeedPhrase: (password) => request('/auth/seed-phrase', { method: 'POST', body: { password } }),
+  getSeedPhrase: (password, totp) =>
+    request('/auth/seed-phrase', { method: 'POST', body: totp ? { password, totp } : { password } }),
+  resolveFederation: (address) => request(`/wallet/resolve-federation?address=${encodeURIComponent(address)}`),
   recoverAccount: (body) => request('/auth/recover', { method: 'POST', body }),
   // Availability calendar
   getCalendar: (productId) => request(`/products/${productId}/calendar`),
@@ -560,6 +583,8 @@ export const api = {
   // Two-Factor Authentication
   setup2FA: () => request('/auth/2fa/setup', { method: 'POST' }),
   verify2FA: (body) => request('/auth/2fa/verify', { method: 'POST', body }),
+  // Second factor at login: exchanges the mfa_token from POST /auth/login for a session.
+  verifyLogin2FA: (body) => request('/auth/2fa/verify-login', { method: 'POST', body }),
   get2FAStatus: () => request('/auth/2fa/status'),
   disable2FA: () => request('/auth/2fa/disable', { method: 'POST' }),
 };

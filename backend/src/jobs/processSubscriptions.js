@@ -2,8 +2,9 @@
 
 const cron = require('node-cron');
 const logger = require('../logger');
+const { transition } = require('../models/orderStatus');
 const db = require('../db/schema');
-const { sendPayment } = require('../utils/stellar');
+const { sendPayment, getSpendableBalance } = require('../utils/stellar');
 const { decryptUserSecretKey } = require('../utils/crypto');
 const { nextOrderDate } = require('../routes/subscriptions');
 const mailer = require('../utils/mailer');
@@ -122,6 +123,22 @@ async function processSubscriptions() {
 
     const totalPrice = sub.price * sub.quantity;
 
+    if (typeof getSpendableBalance === 'function') {
+      const spendable = await getSpendableBalance(sub.buyer_wallet);
+      if (spendable < totalPrice) {
+        const retryCount = (current.retry_count || 0) + 1;
+        await db.query('UPDATE subscriptions SET retry_count = $1, retry_after = $2 WHERE id = $3', [retryCount, retryAfterDate(), sub.id]);
+        try {
+          const { rows: buyerRows } = await db.query('SELECT email, name FROM users WHERE id = $1', [sub.buyer_id]);
+          if (buyerRows[0]) await mailer.sendSubscriptionPaymentFailedEmail({ buyer: buyerRows[0], subscription: sub, reason: 'insufficient_funds' });
+        } catch (mailErr) {
+          logger.warn('[subscriptions] Failed to notify insufficient funds', { subscriptionId: sub.id, error: mailErr.message });
+        }
+        logger.warn(`[subscriptions] Sub ${sub.id} deferred: spendable balance ${spendable} below ${totalPrice}`);
+        continue;
+      }
+    }
+
     // Atomic stock check + order creation
     let orderId;
     try {
@@ -150,10 +167,11 @@ async function processSubscriptions() {
       });
 
       // Confirm success atomically
-      await db.query(
-        'UPDATE orders SET status = $1, stellar_tx_hash = $2 WHERE id = $3',
-        ['paid', txHash, orderId]
-      );
+      await transition(orderId, 'pending', 'paid', {
+        actor: 'subscription-job',
+        reason: 'payment-confirmed',
+      });
+      await db.query('UPDATE orders SET stellar_tx_hash = $1 WHERE id = $2', [txHash, orderId]);
       await db.query(
         'UPDATE subscriptions SET next_order_at = $1, retry_count = 0, retry_after = NULL WHERE id = $2',
         [nextOrderDate(sub.frequency), sub.id]
@@ -168,7 +186,10 @@ async function processSubscriptions() {
       });
     } catch (e) {
       // Restore stock
-      await db.query('UPDATE orders SET status = $1 WHERE id = $2', ['failed', orderId]);
+      await transition(orderId, 'pending', 'failed', {
+        actor: 'subscription-job',
+        reason: e.message,
+      });
       await db.query('UPDATE products SET quantity = quantity + $1 WHERE id = $2', [
         sub.quantity,
         sub.product_id,

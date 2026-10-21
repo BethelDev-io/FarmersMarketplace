@@ -1,4 +1,6 @@
 require('dotenv').config();
+// Express 4 does not forward rejected async route promises by itself.
+require('express-async-errors');
 
 const logger = require('./logger');
 const REQUIRED_ENV = ['JWT_SECRET', 'ENCRYPTION_SECRET'];
@@ -25,8 +27,7 @@ const swaggerSpec = require('./swagger');
 const helmet = require('helmet');
 const { enforceHttps, hsts } = require('./middleware/https');
 const { csrfProtect, csrfTokenHandler } = require('./middleware/csrf');
-const { errorHandler } = require('./middleware/error');
-const { notFoundHandler } = require('./middleware/error');
+const { errorHandler, notFoundHandler } = require('./middleware/error');
 const { sanitizeResponse } = require('./middleware/sanitize');
 const requestLogger = require('./middleware/requestLogger');
 const categoriesRouter = require('./routes/categories');

@@ -8,6 +8,7 @@ import AdminOrdersPanel from '../components/admin/AdminOrdersPanel';
 import AdminDisputesPanel from '../components/admin/AdminDisputesPanel';
 import AdminAnnouncementsPanel from '../components/admin/AdminAnnouncementsPanel';
 
+import { getErrorMessage } from '../utils/errorMessages';
 function DeactivateModal({ user, onConfirm, onCancel }) {
   const confirmRef = useRef(null);
   useEffect(() => { confirmRef.current?.focus(); }, []);
@@ -99,7 +100,7 @@ function ResolveDisputeModal({ dispute, onConfirm, onCancel }) {
       ? { resolution, split_percent_buyer: Number(splitPercentBuyer) }
       : { resolution };
     try { await onConfirm(dispute.id, body); }
-    catch (e) { setErr(e.message); setBusy(false); }
+    catch (e) { setErr(getErrorMessage(e)); setBusy(false); }
   }
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="resolve-modal-title"
@@ -297,7 +298,7 @@ export default function AdminDashboard() {
     try {
       const res = await api.adminGetStats();
       setStats(res.data);
-    } catch (e) { setError(e.message); }
+    } catch (e) { setError(getErrorMessage(e)); }
   }
 
   async function loadUsers(page = 1) {
@@ -306,7 +307,7 @@ export default function AdminDashboard() {
       setUsers(res.data);
       setPagination(res.pagination);
       setSearchParams(prev => { const p = new URLSearchParams(prev); p.set('usersPage', page); return p; });
-    } catch (e) { setError(e.message); }
+    } catch (e) { setError(getErrorMessage(e)); }
   }
 
   async function loadOrders(page = 1) {
@@ -315,7 +316,7 @@ export default function AdminDashboard() {
       setOrders(res.data);
       setOrderPagination(res.pagination);
       setSearchParams(prev => { const p = new URLSearchParams(prev); p.set('ordersPage', page); return p; });
-    } catch (e) { setError(e.message); }
+    } catch (e) { setError(getErrorMessage(e)); }
   }
 
   useEffect(() => {
@@ -334,7 +335,7 @@ export default function AdminDashboard() {
       const params = new URLSearchParams(Object.entries(filters).filter(([, v]) => v)).toString();
       const res = await api.adminGetContracts(params ? `?${params}` : '');
       setContracts(res.data ?? []);
-    } catch (e) { setContractMsg(e.message); }
+    } catch (e) { setContractMsg(getErrorMessage(e)); }
   }
 
   async function handleRegisterContract(e) {
@@ -345,7 +346,7 @@ export default function AdminDashboard() {
       setContractForm({ contract_id: '', name: '', type: 'escrow', network: 'testnet' });
       setContractMsg('Contract registered.');
       loadContracts();
-    } catch (err) { setContractMsg(err.message); }
+    } catch (err) { setContractMsg(getErrorMessage(err)); }
   }
 
   async function handleDeployContract(e) {
@@ -366,7 +367,7 @@ export default function AdminDashboard() {
       setDeployMsg(`Contract deployed! ID: ${res.data.contract_id}`);
       loadContracts();
     } catch (err) {
-      setDeployMsg(err.message);
+      setDeployMsg(getErrorMessage(err));
     } finally {
       setDeployBusy(false);
     }
@@ -383,7 +384,7 @@ export default function AdminDashboard() {
     try {
       await api.adminDeregisterContract(id);
       loadContracts();
-    } catch (e) { setContractMsg(e.message); }
+    } catch (e) { setContractMsg(getErrorMessage(e)); }
   }
 
   async function handleDeactivate(id, name) {
@@ -396,7 +397,7 @@ export default function AdminDashboard() {
     try {
       await api.adminDeactivateUser(id);
       loadUsers(pagination.page);
-    } catch (e) { setError(e.message); }
+    } catch (e) { setError(getErrorMessage(e)); }
   }
 
   function handleBan(id, name) {
@@ -414,7 +415,7 @@ export default function AdminDashboard() {
     } catch (e) {
       // Revert on error
       setUsers(prev => prev.map(u => u.id === id ? { ...u, banned_at: null } : u));
-      setError(e.message);
+      setError(getErrorMessage(e));
     }
     setBanBusy(false);
   }
@@ -427,7 +428,7 @@ export default function AdminDashboard() {
     } catch (e) {
       // Revert on error
       loadUsers(pagination.page);
-      setError(e.message);
+      setError(getErrorMessage(e));
     }
   }
 
@@ -441,7 +442,7 @@ export default function AdminDashboard() {
       const res = await api.getContractState(contractId.trim(), contractPrefix.trim() || undefined);
       setContractState(res.data);
     } catch (e) {
-      setContractError(e.message);
+      setContractError(getErrorMessage(e));
     } finally {
       setContractLoading(false);
     }
@@ -454,7 +455,7 @@ export default function AdminDashboard() {
       const res = await api.adminGetContractUpgrades(registryId);
       setContractUpgrades(res.data ?? []);
     } catch (e) {
-      setUpgradeDetailError(e.message);
+      setUpgradeDetailError(getErrorMessage(e));
       setContractUpgrades([]);
     } finally {
       setUpgradeDetailLoading(false);
@@ -480,7 +481,7 @@ export default function AdminDashboard() {
       setUpgradeSubmitMsg('Upgrade recorded.');
       await loadContractUpgrades(selectedRegistryId);
     } catch (err) {
-      setUpgradeSubmitMsg(err.message || 'Failed to record upgrade');
+      setUpgradeSubmitMsg(getErrorMessage(err));
     } finally {
       setUpgradeSubmitBusy(false);
     }
@@ -510,7 +511,7 @@ export default function AdminDashboard() {
       const data = await api.simulateContractCall(simContractId.trim(), simMethod.trim(), args);
       setSimOutcome(data);
     } catch (err) {
-      setSimFormError(err.message);
+      setSimFormError(getErrorMessage(err));
     } finally {
       setSimBusy(false);
     }
@@ -528,7 +529,7 @@ export default function AdminDashboard() {
       setEvtData(res);
       setEvtPage(page);
     } catch (e) {
-      setEvtError(e.message);
+      setEvtError(getErrorMessage(e));
     } finally {
       setEvtLoading(false);
     }
@@ -546,7 +547,7 @@ export default function AdminDashboard() {
       setInvocData(res);
       setInvocPage(page);
     } catch (e) {
-      setInvocError(e.message);
+      setInvocError(getErrorMessage(e));
     } finally {
       setInvocLoading(false);
     }
@@ -976,7 +977,7 @@ export default function AdminDashboard() {
                     return (
                       <button
                         type="button"
-                        onClick={() => api.adminExportContractState(reg.id, exportFormat, exportSinceLedger || undefined).catch(e => setContractError(e.message))}
+                        onClick={() => api.adminExportContractState(reg.id, exportFormat, exportSinceLedger || undefined).catch(e => setContractError(getErrorMessage(e)))}
                         style={{ padding: '6px 16px', borderRadius: 6, background: '#1d4ed8', color: '#fff', fontWeight: 600, fontSize: 13, border: 'none', cursor: 'pointer' }}
                       >⬇ Export</button>
                     );
@@ -1120,7 +1121,7 @@ export default function AdminDashboard() {
                 try {
                   const res = await api.adminGetContractAcl(e.target.value);
                   setAclEntries(res.data ?? []);
-                } catch (err) { setAclMsg(err.message); }
+                } catch (err) { setAclMsg(getErrorMessage(err)); }
               }
             }}
           >
@@ -1143,7 +1144,7 @@ export default function AdminDashboard() {
                   const res = await api.adminGetContractAcl(aclRegistryId);
                   setAclEntries(res.data ?? []);
                   setAclMsg('Access granted.');
-                } catch (err) { setAclMsg(err.message); }
+                } catch (err) { setAclMsg(getErrorMessage(err)); }
               }}
               style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16, alignItems: 'flex-end' }}
             >
@@ -1208,7 +1209,7 @@ export default function AdminDashboard() {
                               const res = await api.adminGetContractAcl(aclRegistryId);
                               setAclEntries(res.data ?? []);
                               setAclMsg('Access revoked.');
-                            } catch (err) { setAclMsg(err.message); }
+                            } catch (err) { setAclMsg(getErrorMessage(err)); }
                           }}
                         >Revoke</button>
                       </td>
@@ -1256,7 +1257,7 @@ export default function AdminDashboard() {
                 const res = await api.adminCompareContractVersions(cmpRegistryId, cmpV1.trim(), cmpV2.trim());
                 setCmpResult(res.data);
               } catch (err) {
-                setCmpError(err.message || 'Comparison failed');
+                setCmpError(getErrorMessage(err));
               } finally {
                 setCmpLoading(false);
               }

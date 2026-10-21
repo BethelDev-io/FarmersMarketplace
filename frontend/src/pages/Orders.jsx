@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import Spinner from '../components/Spinner';
 import { useNetwork } from '../context/NetworkContext';
 
+import { getErrorMessage } from '../utils/errorMessages';
 const ALL_STATUSES = [
   'pending',
   'paid',
@@ -236,7 +237,7 @@ export default function Orders() {
       setAllOrders(Array.isArray(data) ? data : (data?.data ?? []));
       setBundleOrders(bundleData?.data ?? []);
     } catch (err) {
-      setError(err?.message || 'Failed to load orders');
+      setError(getErrorMessage(err));
       setAllOrders([]);
     } finally {
       setLoading(false);
@@ -294,7 +295,7 @@ export default function Orders() {
       await api.claimPreorder(orderId);
       load();
     } catch (e) {
-      setClaimError((prev) => ({ ...prev, [orderId]: e.message }));
+      setClaimError((prev) => ({ ...prev, [orderId]: getErrorMessage(e) }));
     } finally {
       setClaimingId(null);
     }
@@ -313,7 +314,7 @@ export default function Orders() {
       }));
       load();
     } catch (e) {
-      setReturnMsg((prev) => ({ ...prev, [orderId]: { type: 'err', text: e.message } }));
+      setReturnMsg((prev) => ({ ...prev, [orderId]: { type: 'err', text: getErrorMessage(e) } }));
     } finally {
       setReturnLoading(false);
     }
@@ -325,7 +326,7 @@ export default function Orders() {
     try {
       await api.exportOrders(format);
     } catch (e) {
-      setExportError(e.message || 'Export failed');
+      setExportError(getErrorMessage(e));
     } finally {
       setExporting(null);
     }
@@ -856,7 +857,7 @@ export default function Orders() {
                             try {
                               await api.downloadReceipt(o.id);
                             } catch (e) {
-                              setReceiptError((prev) => ({ ...prev, [o.id]: e.message || 'Download failed' }));
+                              setReceiptError((prev) => ({ ...prev, [o.id]: getErrorMessage(e) }));
                             } finally {
                               setDownloadingReceipt(null);
                             }

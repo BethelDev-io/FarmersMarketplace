@@ -58,6 +58,30 @@ describe('#1160 — auth.js single verify with clockTolerance:30', () => {
     await auth(req, res, jest.fn());
     expect(res.status).toHaveBeenCalledWith(401);
   });
+
+  it('rejects a token signed with a different algorithm (alg confusion)', async () => {
+    const token = jwt.sign({ id: 1, role: 'farmer' }, SECRET, { algorithm: 'HS512' });
+    const { req, res, next } = makeReqRes(token);
+    await auth(req, res, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it('rejects a stream-scoped token used as a Bearer access token (BE-10)', async () => {
+    const streamToken = jwt.sign({ id: 1, scope: 'stream' }, SECRET, { expiresIn: '60s' });
+    const { req, res, next } = makeReqRes(streamToken);
+    await auth(req, res, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it('rejects a token minted with a non-access typ (BE-10)', async () => {
+    const token = jwt.sign({ id: 1, typ: 'refresh' }, SECRET);
+    const { req, res, next } = makeReqRes(token);
+    await auth(req, res, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
 });
 
 // ── adminAuth middleware (issue #1159) ────────────────────────────────────

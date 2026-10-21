@@ -2,6 +2,7 @@ const router = require('express').Router();
 const StellarSdk = require('@stellar/stellar-sdk');
 const db = require('../db/schema');
 const auth = require('../middleware/auth');
+const requireStepUp2FA = require('../middleware/requireStepUp2FA');
 const validate = require('../middleware/validate');
 const cache = require('../cache');
 const createPerUserRateLimiter = require('../middleware/rateLimitPerUser');
@@ -19,7 +20,8 @@ const {
   server,
 } = require('../utils/stellar');
 const { resolveFederationAddress, FederationError } = require('../utils/stellar-accounts');
-const { claimBalance } = require('../utils/stellar-payments');
+const { claimBalance, sendWithdrawal, accountExists } = require('../utils/stellar-payments');
+const speakeasy = require('speakeasy');
 const { err } = require('../middleware/error');
 const config = require('../config');
 const { decryptUserSecretKey } = require('../utils/crypto');
@@ -217,7 +219,7 @@ router.post('/fund', auth, fundLimiter, async (req, res) => {
  *     summary: Send XLM to another address
  *     tags: [Wallet]
  */
-router.post('/send', auth, validate.sendXLM, async (req, res) => {
+router.post('/send', auth, requireStepUp2FA, validate.sendXLM, async (req, res) => {
   const { destination, memo } = req.body;
   const amount = parseFloat(req.body.amount);
 
@@ -273,13 +275,22 @@ router.post('/send', auth, validate.sendXLM, async (req, res) => {
 router.post('/withdraw', auth, async (req, res) => {
   const destination = String(req.body.destination || '').trim();
   const amount = parseFloat(req.body.amount);
+  const memo = req.body.memo == null ? '' : String(req.body.memo);
+  const memoType = req.body.memo_type || 'text';
 
-  if (!StellarSdk.StrKey.isValidEd25519PublicKey(destination)) {
+  if (
+    !StellarSdk.StrKey.isValidEd25519PublicKey(destination) &&
+    !StellarSdk.StrKey.isValidMed25519PublicKey(destination)
+  ) {
     return err(res, 400, 'Invalid Stellar destination address', 'invalid_destination');
   }
 
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return err(res, 400, 'Amount must be greater than 0', 'invalid_amount');
+  if (!Number.isFinite(amount) || amount <= 0 || !/^\d+(\.\d{1,7})?$/.test(String(req.body.amount))) {
+    return err(res, 400, 'Amount must be greater than 0 with at most 7 decimals', 'invalid_amount');
+  }
+
+  if (!['text', 'id', 'hash'].includes(memoType)) {
+    return err(res, 400, 'memo_type must be text, id or hash', 'validation_error');
   }
 
   try {
@@ -289,6 +300,19 @@ router.post('/withdraw', auth, async (req, res) => {
     );
     const user = rows[0];
     if (!user) return err(res, 404, 'User not found', 'user_not_found');
+
+    // Require a TOTP code when the user has 2FA enabled.
+    const { rows: tfaRows } = await db.query(
+      'SELECT totp_secret, enabled FROM user_2fa_settings WHERE user_id = $1',
+      [req.user.id]
+    );
+    const tfa = tfaRows[0];
+    if (tfa && tfa.enabled === 1) {
+      const code = String(req.body.totp || '').trim();
+      if (!code) return err(res, 401, 'Two-factor code required', 'totp_required');
+      const ok = speakeasy.totp.verify({ secret: tfa.totp_secret, encoding: 'base32', token: code, window: 1 });
+      if (!ok) return err(res, 401, 'Invalid two-factor code', 'invalid_code');
+    }
 
     if (destination === user.stellar_public_key) {
       return err(res, 400, 'Cannot withdraw to your own platform wallet', 'same_destination');
@@ -311,11 +335,12 @@ router.post('/withdraw', auth, async (req, res) => {
       );
     }
 
-    const txHash = await sendPayment({
+    const { hash: txHash, created } = await sendWithdrawal({
       senderSecret: await decryptUserSecretKey(user.stellar_secret_key),
-      receiverPublicKey: destination,
+      destination,
       amount,
-      memo: 'Wallet withdrawal',
+      memo,
+      memoType,
     });
 
     return res.json({
@@ -324,15 +349,41 @@ router.post('/withdraw', auth, async (req, res) => {
       type: 'withdrawal',
       destination,
       amount,
+      created,
+      memo: memo || null,
+      memo_type: memo ? memoType : null,
       baseReserve: BASE_RESERVE_XLM,
       availableAfter: Number((available - amount).toFixed(7)),
     });
   } catch (e) {
+    if (['invalid_memo', 'create_account_min', 'destination_not_found'].includes(e.code)) {
+      return err(res, 400, e.message, e.code);
+    }
     const stellarMsg = e?.response?.data?.extras?.result_codes?.operations?.[0] || e.message;
     return res.status(502).json({
       success: false,
       error: `Stellar transaction failed: ${stellarMsg}`,
+      code: stellarMsg === 'op_underfunded' ? 'op_underfunded' : undefined,
     });
+  }
+});
+
+/**
+ * GET /api/wallet/account-exists?address=G…|M…
+ * Whether the destination account is already funded on the network.
+ */
+router.get('/account-exists', auth, async (req, res) => {
+  let address = String(req.query.address || '').trim();
+  if (StellarSdk.StrKey.isValidMed25519PublicKey(address)) {
+    address = StellarSdk.MuxedAccount.fromAddress(address, '0').baseAccount().accountId();
+  }
+  if (!StellarSdk.StrKey.isValidEd25519PublicKey(address)) {
+    return err(res, 400, 'Invalid Stellar address', 'invalid_destination');
+  }
+  try {
+    return res.json({ success: true, exists: await accountExists(address) });
+  } catch (e) {
+    return err(res, 502, 'Could not check destination account', 'horizon_error');
   }
 });
 

@@ -40,6 +40,42 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      # Jest only loads modules a test touches and mocks hide syntax errors, so parse every source file.
+      - name: Syntax check backend sources
+        run: find src -name '*.js' -print0 | xargs -0 -n1 node --check
+
+      - name: Lint backend for duplicate/unreachable code
+        run: >-
+          npx eslint src --no-eslintrc --parser-options ecmaVersion:latest
+          --env node,es2021
+          --rule '{"no-dupe-keys":"error","no-redeclare":"error","no-unreachable":"error","no-dupe-class-members":"error"}'
+
+      # Boots the real server (in-memory SQLite) so import-time failures in any module surface here.
+      - name: Boot server and poll health
+        env:
+          PORT: 4000
+          SQLITE_PATH: ':memory:'
+          SOROBAN_RPC_URL: https://soroban-testnet.stellar.org
+          SOROBAN_ESCROW_CONTRACT_ID: ci-placeholder
+          SOROBAN_XLM_TOKEN_CONTRACT_ID: ci-placeholder
+        run: |
+          node src/index.js > "$RUNNER_TEMP/boot.log" 2>&1 &
+          pid=$!
+          for _ in $(seq 1 30); do
+            if ! kill -0 "$pid" 2>/dev/null; then
+              echo "Server exited during boot"; cat "$RUNNER_TEMP/boot.log"; exit 1
+            fi
+            if [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:4000/api/v1/health)" = "200" ]; then
+              echo "Health check returned 200"
+              kill "$pid"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Health check did not return 200 within 30s"; cat "$RUNNER_TEMP/boot.log"
+          kill "$pid"
+          exit 1
+
       - name: Run tests with coverage
         run: npm run test:coverage
 
@@ -70,6 +106,42 @@ jobs:
 
       - name: Run lint
         run: npm run lint
+
+  frontend-test:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: ${{ runner.os }}-frontend-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-frontend-
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Run tests with coverage
+        run: npx vitest run --coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/
+          retention-days: 30
 
   frontend-bundle-size:
     name: Frontend Bundle Size Budget
