@@ -6,6 +6,8 @@ import { useTranslation } from 'react-i18next';
 import { changeAppLanguage } from '../i18n';
 import { api } from '../api/client';
 import { useNetwork } from '../context/NetworkContext';
+import { useMessageStream } from '../hooks/useMessageStream';
+import NotificationBell from './NotificationBell';
 
 const s = {
   nav: { background: '#2d6a4f', padding: '12px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 },
@@ -43,41 +45,10 @@ export default function Navbar() {
     return () => { cancelled = true; };
   }, [user]);
 
-  // Live updates via SSE — increment on new_message. Tickets are single-use, so
-  // every reconnect fetches a fresh stream URL instead of reusing the old one.
-  useEffect(() => {
-    if (!user || typeof EventSource === 'undefined' || typeof api.getMessagesStreamUrl !== 'function') return;
-    let cancelled = false;
-    let es = null;
-    let reconnectTimer = null;
-    async function connect() {
-      let url = '';
-      try {
-        url = await api.getMessagesStreamUrl();
-      } catch {
-        /* retry below */
-      }
-      if (cancelled) return;
-      if (!url) {
-        reconnectTimer = setTimeout(connect, 5000);
-        return;
-      }
-      es = new EventSource(url);
-      es.addEventListener('new_message', () => {
-        setUnreadCount(c => c + 1);
-      });
-      es.onerror = () => {
-        es.close();
-        reconnectTimer = setTimeout(connect, 5000);
-      };
-    }
-    connect();
-    return () => {
-      cancelled = true;
-      clearTimeout(reconnectTimer);
-      es?.close();
-    };
-  }, [user]);
+  // Live updates via the shared messages stream — increment on new_message.
+  useMessageStream((type) => {
+    if (type === 'new_message') setUnreadCount(c => c + 1);
+  }, { enabled: !!user });
 
   // Refresh the count whenever messages are marked read elsewhere in the app
   useEffect(() => {
@@ -212,7 +183,9 @@ export default function Navbar() {
               </NavLink>
             )}
             {user.role !== 'admin' && <NavLink to="/wallet" style={navLinkStyle} onClick={closeDrawer}>Wallet</NavLink>}
+            <NavLink to="/messages" style={navLinkStyle} onClick={closeDrawer}>Messages</NavLink>
             <NavLink to="/settings" style={navLinkStyle} onClick={closeDrawer}>Settings</NavLink>
+            <NotificationBell />
             <span style={{ color: '#d8f3dc', fontSize: 13 }}>{user.name} ({user.role})</span>
             {unreadCount > 0 && (
               <span

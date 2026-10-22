@@ -1,4 +1,35 @@
 {
+  "inbox": {
+    "title": "Messages",
+    "conversations": "Conversations",
+    "thread": "Message thread",
+    "loading": "Loading…",
+    "empty": "No conversations yet.",
+    "unread": "unread",
+    "selectConversation": "Select a conversation to start reading.",
+    "back": "Back",
+    "newConversation": "New conversation",
+    "sending": "Sending…",
+    "failed": "Failed to send.",
+    "retry": "Retry",
+    "inputLabel": "Type a message",
+    "placeholder": "Write a message…",
+    "send": "Send",
+    "loadError": "Could not load conversations.",
+    "messageFarmer": "Message farmer"
+  },
+  "notificationCenter": {
+    "title": "Notifications",
+    "markAllRead": "Mark all read",
+    "markRead": "Mark read",
+    "viewAll": "View all",
+    "loading": "Loading…",
+    "empty": "You have no notifications.",
+    "loadMore": "Load more",
+    "loadError": "Could not load notifications.",
+    "unreadCount_one": "{{count}} unread notification",
+    "unreadCount_other": "{{count}} unread notifications"
+  },
   "nav": {
     "brand": "🌿 FarmersMarket",
     "browse": "Browse",

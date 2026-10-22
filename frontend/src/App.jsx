@@ -45,6 +45,8 @@ const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 const AddressBook = lazy(() => import('./pages/AddressBook'));
 const Settings = lazy(() => import('./pages/Settings'));
 const AccountRecovery = lazy(() => import('./pages/Settings').then(m => ({ default: m.AccountRecovery })));
+const Messages = lazy(() => import('./pages/Messages'));
+const Notifications = lazy(() => import('./pages/Notifications'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
 function PrivateRoute({ children, role }) {
@@ -160,6 +162,8 @@ function AppContent() {
             <Route path="/farmer/:id" element={<FarmerProfile />} />
             <Route path="/addresses" element={<PrivateRoute role="buyer"><AddressBook /></PrivateRoute>} />
             <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
+            <Route path="/messages" element={<PrivateRoute><Messages /></PrivateRoute>} />
+            <Route path="/notifications" element={<PrivateRoute><Notifications /></PrivateRoute>} />
             <Route path="/recover" element={<AccountRecovery />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
