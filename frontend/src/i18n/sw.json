@@ -378,5 +378,27 @@
     "orderUpdates": "Sasisho za Agizo",
     "promotions": "Matangazo na Ofa",
     "newsletter": "Jarida"
+  },
+  "offline": {
+    "banner": "Uko nje ya mtandao. Unaona bidhaa zilizohifadhiwa tu — malipo, kutuma pesa na maagizo yamezimwa.",
+    "willPublish": "Itachapishwa ukirudi mtandaoni",
+    "publishedQueued": "Tangazo lako \"{{name}}\" limechapishwa.",
+    "publishFailed": "Imeshindwa kuchapisha \"{{name}}\": {{error}}"
+  },
+  "upload": {
+    "progress": "Maendeleo ya kupakia",
+    "cancel": "Ghairi",
+    "retry": "Jaribu kupakia tena",
+    "done": "Upakiaji umekamilika",
+    "notImage": "Tafadhali chagua faili la picha (JPEG, PNG au WebP).",
+    "generateFailed": "Imeshindwa kutengeneza picha.",
+    "tooLarge": "Picha inazidi kikomo cha MB 5.",
+    "unsupported": "Muundo hautumiki. Tumia JPEG, PNG au WebP."
+  },
+  "feedPagination": {
+    "loadMore": "Pakia zaidi",
+    "retry": "Jaribu tena",
+    "loadError": "Imeshindwa kupakia vipengee zaidi.",
+    "empty": "Hakuna kitu bado."
   }
 }

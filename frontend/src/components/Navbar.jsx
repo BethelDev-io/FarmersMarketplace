@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useTranslation } from 'react-i18next';
+import { changeAppLanguage } from '../i18n';
 import { api } from '../api/client';
 import { useNetwork } from '../context/NetworkContext';
 import { useMessageStream } from '../hooks/useMessageStream';
@@ -215,7 +216,7 @@ export default function Navbar() {
         <select
           style={s.langSelect}
           value={i18n.language}
-          onChange={(e) => i18n.changeLanguage(e.target.value)}
+          onChange={(e) => changeAppLanguage(e.target.value)}
           aria-label="Select language"
         >
           <option value="en">English</option>

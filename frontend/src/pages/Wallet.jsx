@@ -100,6 +100,7 @@ import TrustlinePanel from '../components/wallet/TrustlinePanel';
 import SendForm from '../components/wallet/SendForm';
 import AlertsPanel from '../components/wallet/AlertsPanel';
 import PaymentStreams from '../components/wallet/PaymentStreams';
+import FreighterConnect from '../components/wallet/FreighterConnect';
 import TransactionHistory from '../components/wallet/TransactionHistory';
 
 export default function Wallet() {
@@ -434,7 +435,7 @@ export default function Wallet() {
   }
 
   return (
-    <div style={s.page}>
+    <div className="wallet-page" style={s.page}>
       <Helmet>
         <title>My Wallet – Farmers Marketplace</title>
         <meta name="description" content="Manage your Stellar XLM wallet, view balance and transaction history." />
@@ -515,6 +516,8 @@ export default function Wallet() {
               onSave={saveBudget}
             />
           )}
+
+          <FreighterConnect />
 
           <TrustlinePanel wallet={wallet} trustlines={trustlines} />
 
