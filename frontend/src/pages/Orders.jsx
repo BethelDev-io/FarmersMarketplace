@@ -4,6 +4,8 @@ import { useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import Spinner from '../components/Spinner';
+import Pagination from '../components/Pagination';
+import { normalizePage } from '../hooks/usePaginatedQuery';
 import { useNetwork } from '../context/NetworkContext';
 import OpenDisputeModal from '../components/disputes/OpenDisputeModal';
 import DisputeDetail from '../components/disputes/DisputeDetail';
@@ -173,6 +175,8 @@ function StatusTimeline({ status }) {
   );
 }
 
+const ORDERS_PAGE_SIZE = 20;
+
 export default function Orders() {
   const { explorerUrl } = useNetwork();
   const [allOrders, setAllOrders] = useState([]);
@@ -183,6 +187,16 @@ export default function Orders() {
   const dateFrom = searchParams.get('date_from') || '';
   const dateTo = searchParams.get('date_to') || '';
   const sortBy = searchParams.get('sort') || 'newest';
+  // FE-21: page number lives in the URL (?page=3); filter changes reset it.
+  const page = Math.max(1, Number(searchParams.get('page')) || 1);
+  const [total, setTotal] = useState(0);
+
+  const setPage = (next) => {
+    const p = new URLSearchParams(searchParams);
+    if (next <= 1) p.delete('page'); else p.set('page', String(next));
+    setSearchParams(p);
+    window.scrollTo?.(0, 0);
+  };
 
   const setActiveTab = (tab) => {
     const p = {};
@@ -234,11 +248,15 @@ export default function Orders() {
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;
       if (sortBy !== 'newest') params.sort = sortBy;
+      params.page = page;
+      params.limit = ORDERS_PAGE_SIZE;
       const [data, bundleData] = await Promise.all([
         api.getOrders(params),
         api.getBundleOrders().catch(() => ({ data: [] })),
       ]);
-      setAllOrders(Array.isArray(data) ? data : (data?.data ?? []));
+      const res = normalizePage(data);
+      setAllOrders(res.items);
+      setTotal(res.total);
       setBundleOrders(bundleData?.data ?? []);
     } catch (err) {
       setError(getErrorMessage(err));
@@ -246,7 +264,7 @@ export default function Orders() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, dateFrom, dateTo, sortBy]);
+  }, [activeTab, dateFrom, dateTo, sortBy, page]);
 
   useEffect(() => {
     load();
@@ -974,6 +992,14 @@ export default function Orders() {
       {disputeViewId && (
         <DisputeDetail orderId={disputeViewId} onClose={() => setDisputeViewId(null)} />
       )}
+      <Pagination
+        page={page}
+        totalPages={Math.ceil(total / ORDERS_PAGE_SIZE)}
+        total={total}
+        limit={ORDERS_PAGE_SIZE}
+        onChange={setPage}
+      />
+
       {returnModal && (
         <div
           style={{
