@@ -7,6 +7,8 @@ import Spinner from '../components/Spinner';
 import Pagination from '../components/Pagination';
 import { normalizePage } from '../hooks/usePaginatedQuery';
 import { useNetwork } from '../context/NetworkContext';
+import OpenDisputeModal from '../components/disputes/OpenDisputeModal';
+import DisputeDetail from '../components/disputes/DisputeDetail';
 
 import { getErrorMessage } from '../utils/errorMessages';
 const ALL_STATUSES = [
@@ -234,6 +236,8 @@ export default function Orders() {
   const [exporting, setExporting] = useState(null);
   const [exportError, setExportError] = useState(null);
   const [receiptError, setReceiptError] = useState({});
+  const [disputeTarget, setDisputeTarget] = useState(null); // order being disputed
+  const [disputeViewId, setDisputeViewId] = useState(null); // order id whose dispute is shown
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -856,6 +860,27 @@ export default function Orders() {
                         {STATUS_ICON[o.status]} {o.status}
                       </span>
                       <span style={s.price}>{parseFloat(o.total_price).toFixed(2)} XLM</span>
+                      {o.dispute_id ? (
+                        <button
+                          type="button"
+                          onClick={() => setDisputeViewId(o.id)}
+                          style={{ fontSize: 12, padding: '5px 12px', borderRadius: 8, border: '1px solid #a04000', background: '#fff', color: '#a04000', cursor: 'pointer', fontWeight: 600 }}
+                        >
+                          ⚖️ View dispute
+                        </button>
+                      ) : (
+                        user?.role === 'buyer' &&
+                        o.status === 'paid' &&
+                        o.escrow_status && o.escrow_status !== 'none' && (
+                          <button
+                            type="button"
+                            onClick={() => setDisputeTarget(o)}
+                            style={{ fontSize: 12, padding: '5px 12px', borderRadius: 8, border: '1px solid #b42318', background: '#fff', color: '#b42318', cursor: 'pointer', fontWeight: 600 }}
+                          >
+                            ⚠️ Open dispute
+                          </button>
+                        )
+                      )}
                       {o.status === 'paid' && (
                         <button
                           style={{
@@ -952,6 +977,21 @@ export default function Orders() {
       )}
 
       {/* Return request modal */}
+      {disputeTarget && (
+        <OpenDisputeModal
+          order={disputeTarget}
+          onClose={() => setDisputeTarget(null)}
+          onOpened={() => {
+            const id = disputeTarget.id;
+            setDisputeTarget(null);
+            setDisputeViewId(id);
+            load();
+          }}
+        />
+      )}
+      {disputeViewId && (
+        <DisputeDetail orderId={disputeViewId} onClose={() => setDisputeViewId(null)} />
+      )}
       <Pagination
         page={page}
         totalPages={Math.ceil(total / ORDERS_PAGE_SIZE)}

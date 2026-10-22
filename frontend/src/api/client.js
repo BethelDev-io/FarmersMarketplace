@@ -458,6 +458,14 @@ export const api = {
   adminGetStats: () => request('/admin/stats'),
   adminGetDisputes: () => request('/disputes'),
   adminResolveDispute: (id, body) => request(`/disputes/${id}/resolve`, { method: 'PATCH', body }),
+  openDispute: (body) => request('/disputes', { method: 'POST', body }),
+  getDispute: (id) => request(`/disputes/${id}`),
+  getDisputeByOrder: (orderId) => request(`/disputes/order/${orderId}`, { silent: true }),
+  submitDisputeEvidence: (disputeId, files) => {
+    const form = new FormData();
+    files.forEach((f) => form.append('files', f));
+    return request(`/disputes/${disputeId}/evidence`, { method: 'POST', body: form });
+  },
   adminGetContracts: (qs = '') => request(`/admin/contracts${qs}`),
   adminRegisterContract: (body) => request('/admin/contracts', { method: 'POST', body }),
   adminDeployContract: (formData) => request('/admin/contracts/deploy', { method: 'POST', body: formData }),
@@ -509,6 +517,10 @@ export const api = {
   placeOrderWithBudgetOverride: (body) => request('/orders', { method: 'POST', body: { ...body, budget_override_confirmed: true } }),
   getOrderStatus: (id) => request(`/orders/${id}/status`, { silent: true }),
   getOrderPaymentLink: (orderId) => request(`/orders/${orderId}/payment-link`),
+  prepareOrderPayment: (orderId, publicKey) =>
+    request(`/orders/${orderId}/prepare`, { method: 'POST', body: { public_key: publicKey } }),
+  submitOrderPayment: (orderId, signedXdr) =>
+    request(`/orders/${orderId}/submit`, { method: 'POST', body: { signed_xdr: signedXdr } }),
   getOrderPaymentLinkQr: (orderId) => `/api/orders/${orderId}/payment-link/qr`,
 
   getAuctions: () => request('/auctions'),
