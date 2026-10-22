@@ -94,7 +94,7 @@ platform collected nothing. That fallback (and the argument) has been removed fr
 
 After upgrading such a deployment to this version, **every settlement path**
 (`release`, `release_to_stream`, `batch_release` items, `auto_release`,
-`multisig_release`, `resolve_dispute`) fails with `NotInitialized` (error `23`) until the
+`multisig_release`, `resolve_dispute`) fails with `NotInitialized` (error `28`) until the
 fee is stored. No funds move and no escrow changes state while it is unset. To bring a
 legacy deployment back into service:
 
