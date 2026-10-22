@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && echo Bundle report: dist/bundle-report.html",
+    "build": "vite build && npm run check:bundle-size && echo Bundle report: dist/bundle-report.html",
     "preview": "vite preview",
     "test": "vitest run",
     "test:e2e": "playwright test",

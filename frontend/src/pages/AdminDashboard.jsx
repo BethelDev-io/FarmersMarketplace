@@ -489,7 +489,7 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div style={s.page}>
+    <div className="admin-dashboard" style={s.page}>
       {deactivateTarget && (
         <DeactivateModal
           user={deactivateTarget}
@@ -1164,7 +1164,7 @@ export default function AdminDashboard() {
           Compare function signatures between two WASM versions of a registered contract.
           Results are cached for 10 minutes.
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 10, alignItems: 'end', marginBottom: 12 }}>
+        <div className="admin-comparison-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 10, alignItems: 'end', marginBottom: 12 }}>
           <div>
             <label style={{ display: 'block', fontSize: 13, marginBottom: 4, color: '#555' }}>Registry ID</label>
             <input style={inputStyle} type="number" placeholder="Contract registry ID" value={cmpRegistryId} onChange={(e) => setCmpRegistryId(e.target.value)} />

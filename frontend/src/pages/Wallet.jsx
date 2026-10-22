@@ -435,7 +435,7 @@ export default function Wallet() {
   }
 
   return (
-    <div style={s.page}>
+    <div className="wallet-page" style={s.page}>
       <Helmet>
         <title>My Wallet – Farmers Marketplace</title>
         <meta name="description" content="Manage your Stellar XLM wallet, view balance and transaction history." />
