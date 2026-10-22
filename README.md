@@ -600,3 +600,9 @@ For security vulnerabilities, follow the process in [SECURITY.md](./SECURITY.md)
 
 <!-- handsoff-issue-1382 -->
 - #1382: Align `api/client.js` with real backend routes: about a dozen methods call endpoints that don't exist
+
+<!-- handsoff-issue-1538 -->
+- #1538: CT-19: Rounding policy tests for fees, royalties and rewards
+
+<!-- handsoff-issue-1539 -->
+- #1539: CT-20: Auto-release and timeout refund: define precedence and test the boundaries
