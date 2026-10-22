@@ -28,7 +28,10 @@ const {
   getCarbonOffset,
   generatePaymentLink,
   getMemo,
+  isTestnet,
+  server: horizonServer,
 } = require('../utils/stellar');
+const StellarSdk = require('@stellar/stellar-sdk');
 const { estimateCarbonFootprint } = require('../utils/carbon');
 const { getPathPaymentSendMax } = require('../utils/stellar-payments');
 const {
@@ -103,7 +106,9 @@ router.get('/fee-preview', (req, res) => {
   const amount = parseFloat(req.query.amount);
   if (!amount || amount <= 0) return res.status(400).json({ error: 'amount is required' });
   const info = getPlatformFeeInfo(amount);
-  res.json({ success: true, total: amount, ...info });
+  // Escrowed orders auto-release to the farmer after this many days (FE-16 shows it at checkout).
+  const autoReleaseDays = parseInt(process.env.SOROBAN_ESCROW_TIMEOUT_DAYS || '14', 10);
+  res.json({ success: true, total: amount, ...info, auto_release_days: autoReleaseDays });
 });
 
 // GET /api/orders/path-estimate — public DEX routing estimate (no auth required)
@@ -988,6 +993,7 @@ router.get('/', auth, async (req, res) => {
             (SELECT h.reason FROM order_status_history h
               WHERE h.order_id = o.id AND h.to_status = 'failed'
               ORDER BY h.created_at DESC, h.id DESC LIMIT 1) as failure_reason
+            (SELECT d.id FROM disputes d WHERE d.order_id = o.id) as dispute_id
      FROM orders o
      JOIN products p ON o.product_id = p.id
      JOIN users u ON p.farmer_id = u.id
@@ -1038,7 +1044,8 @@ router.get('/sales', auth, async (req, res) => {
             hb.batch_code as harvest_batch_code, hb.harvest_date as harvest_batch_date, hb.notes as harvest_batch_notes,
             a.label as address_label, a.street as address_street, a.city as address_city,
             a.country as address_country, a.postal_code as address_postal_code,
-            rr.status as return_status, rr.reason as return_reason, rr.reject_reason, rr.refund_tx_hash
+            rr.status as return_status, rr.reason as return_reason, rr.reject_reason, rr.refund_tx_hash,
+            (SELECT d.id FROM disputes d WHERE d.order_id = o.id) as dispute_id
      FROM orders o
      JOIN products p ON o.product_id = p.id
      JOIN users u ON o.buyer_id = u.id
@@ -1385,6 +1392,103 @@ router.get('/:id/payment-link', auth, async (req, res) => {
     orderId: order.id,
     expiresAt: new Date(new Date(order.created_at).getTime() + 30 * 60 * 1000).toISOString(),
   });
+});
+
+// Non-custodial checkout (FE-15). The order is created with payment_method
+// 'sep7' (pending, no server-side signing); the buyer's external wallet then
+// signs the XDR returned by /prepare and hands it back to /submit.
+const EXTERNAL_PAY_WINDOW_MS = 30 * 60 * 1000;
+const externalNetworkPassphrase = isTestnet ? StellarSdk.Networks.TESTNET : StellarSdk.Networks.PUBLIC;
+
+async function loadExternalPayOrder(req, res) {
+  const { rows } = await db.query(
+    `SELECT o.*, u.stellar_public_key AS farmer_public_key
+     FROM orders o JOIN products p ON o.product_id = p.id JOIN users u ON p.farmer_id = u.id
+     WHERE o.id = $1`,
+    [req.params.id]
+  );
+  const order = rows[0];
+  if (!order) return err(res, 404, 'Order not found', 'not_found');
+  if (order.buyer_id !== req.user.id) return err(res, 403, 'Forbidden', 'forbidden');
+  if (order.status !== 'pending') return err(res, 409, 'Order is no longer awaiting payment', 'invalid_order_state');
+  if (Date.now() - new Date(order.created_at).getTime() >= EXTERNAL_PAY_WINDOW_MS)
+    return err(res, 410, 'Payment window has expired', 'payment_link_expired');
+  return order;
+}
+
+// POST /api/orders/:id/prepare — build an unsigned payment XDR for an external wallet
+router.post('/:id/prepare', auth, async (req, res) => {
+  const publicKey = String(req.body?.public_key || '');
+  if (!StellarSdk.StrKey.isValidEd25519PublicKey(publicKey))
+    return err(res, 400, 'A valid Stellar public key is required', 'validation_error');
+  const order = await loadExternalPayOrder(req, res);
+  if (!order || res.headersSent) return;
+  try {
+    const source = await horizonServer.loadAccount(publicKey);
+    const tx = new StellarSdk.TransactionBuilder(source, {
+      fee: StellarSdk.BASE_FEE,
+      networkPassphrase: externalNetworkPassphrase,
+    })
+      .addOperation(
+        StellarSdk.Operation.payment({
+          destination: order.farmer_public_key,
+          asset: StellarSdk.Asset.native(),
+          amount: Number(order.total_price).toFixed(7),
+        })
+      )
+      .addMemo(StellarSdk.Memo.text(`order:${order.id}`))
+      .setTimeout(300)
+      .build();
+    res.json({
+      success: true,
+      xdr: tx.toXDR(),
+      networkPassphrase: externalNetworkPassphrase,
+      network: isTestnet ? 'TESTNET' : 'PUBLIC',
+    });
+  } catch (e) {
+    if (e?.response?.status === 404) return err(res, 400, 'Source account not found on the network', 'account_not_found');
+    logger.error('[orders] prepare external payment failed', { error: e.message });
+    return err(res, 502, 'Unable to prepare transaction', 'prepare_failed');
+  }
+});
+
+// POST /api/orders/:id/submit — verify and submit the externally signed XDR
+router.post('/:id/submit', auth, async (req, res) => {
+  const signedXdr = String(req.body?.signed_xdr || '');
+  if (!signedXdr) return err(res, 400, 'signed_xdr is required', 'validation_error');
+  const order = await loadExternalPayOrder(req, res);
+  if (!order || res.headersSent) return;
+
+  let tx;
+  try {
+    tx = StellarSdk.TransactionBuilder.fromXDR(signedXdr, externalNetworkPassphrase);
+  } catch {
+    return err(res, 400, 'Invalid transaction XDR', 'invalid_xdr');
+  }
+  // The signed tx must be exactly the payment /prepare built: one native payment
+  // of the order total to the farmer, tagged with this order's memo.
+  const op = tx.operations?.[0];
+  const memoOk = tx.memo?.type === 'text' && String(tx.memo.value) === `order:${order.id}`;
+  if (
+    tx.operations?.length !== 1 ||
+    op.type !== 'payment' ||
+    op.destination !== order.farmer_public_key ||
+    !op.asset.isNative() ||
+    Number(op.amount) !== Number(Number(order.total_price).toFixed(7)) ||
+    !memoOk
+  )
+    return err(res, 400, 'Transaction does not match this order', 'xdr_mismatch');
+
+  try {
+    const result = await horizonServer.submitTransaction(tx);
+    await transition(order.id, 'pending', 'paid', { actor: req.user.id, reason: 'external_wallet_payment' });
+    await db.query('UPDATE orders SET stellar_tx_hash = $1 WHERE id = $2', [result.hash, order.id]);
+    res.json({ success: true, orderId: order.id, txHash: result.hash, totalPrice: order.total_price });
+  } catch (e) {
+    const codes = e?.response?.data?.extras?.result_codes;
+    logger.warn('[orders] external payment submission failed', { error: e.message, codes });
+    return err(res, 402, 'Transaction submission failed', 'payment_failed');
+  }
 });
 
 // SSE clients map: userId -> Set of response objects

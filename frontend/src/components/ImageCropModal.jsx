@@ -1,4 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
+import { compressCanvas } from '../utils/imageCompression';
 
 const HANDLE = 8;
 const ASPECT_RATIO = 4 / 3;
@@ -20,6 +22,7 @@ const FOCUSABLE_SELECTORS = [
 ].join(',');
 
 export default function ImageCropModal({ src, onConfirm, onCancel, isGalleryImage = false }) {
+  const { t } = useTranslation();
   const canvasRef = useRef(null);
   const imgRef = useRef(null);
   const dialogRef = useRef(null);
@@ -283,12 +286,13 @@ export default function ImageCropModal({ src, onConfirm, onCancel, isGalleryImag
       crop.x * scaleX, crop.y * scaleY, crop.w * scaleX, crop.h * scaleY,
       0, 0, out.width, out.height,
     );
-    out.toBlob(blob => {
-      if (!blob) { setValidationError('Failed to generate image.'); return; }
-      if (blob.size > MAX_SIZE_BYTES) { setValidationError('Image exceeds the 5 MB limit.'); return; }
-      if (!ALLOWED_TYPES.includes(blob.type)) { setValidationError('Unsupported format. Use JPEG, PNG, or WebP.'); return; }
+    // Resize to 1600px long edge and encode WebP/JPEG @ 0.82 before upload (FE-23).
+    compressCanvas(out).then(blob => {
+      if (!blob) { setValidationError(t('upload.generateFailed')); return; }
+      if (blob.size > MAX_SIZE_BYTES) { setValidationError(t('upload.tooLarge')); return; }
+      if (!ALLOWED_TYPES.includes(blob.type)) { setValidationError(t('upload.unsupported')); return; }
       onConfirm(blob);
-    }, 'image/jpeg', 0.92);
+    });
   }
 
   const handleLabel = { body: 'Move crop', tl: 'Top-left handle', tr: 'Top-right handle', bl: 'Bottom-left handle', br: 'Bottom-right handle' };

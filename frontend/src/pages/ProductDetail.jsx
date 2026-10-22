@@ -16,6 +16,8 @@ import FlashSaleCountdown from '../components/FlashSaleCountdown';
 import ShareButtons from '../components/ShareButtons';
 import PriceHistoryChart from '../components/PriceHistoryChart';
 import NotFound from './NotFound';
+import CheckoutReviewModal from '../components/CheckoutReviewModal';
+import { useFreighter, signWithFreighter } from '../utils/freighter';
 import { Helmet } from 'react-helmet-async';
 import { useTranslation } from 'react-i18next';
 
@@ -121,7 +123,8 @@ function CopyButton({ url }) {
 }
 
 export default function ProductDetail() {
-  const { explorerUrl } = useNetwork();
+  const { explorerUrl, network } = useNetwork();
+  const freighter = useFreighter(network);
   const { t } = useTranslation();
   const { id } = useParams();
   const { user } = useAuth();
@@ -136,6 +139,8 @@ export default function ProductDetail() {
   const [weight, setWeight] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const [reviewBody, setReviewBody] = useState(null); // order body awaiting Confirm & Pay
+  const submittingRef = useRef(false);
   const [confirming, setConfirming] = useState(null); // { orderId, startedAt }
    const [progress, setProgress] = useState(0);
    const [error, setError] = useState('');
@@ -671,20 +676,44 @@ export default function ProductDetail() {
       custom_price: (product.pricing_model === 'pwyw' || product.pricing_model === 'donation') ? parseFloat(customPrice) : undefined,
       reward_tokens: useRewards && rewardTokens > 0 && !sourceAsset ? rewardTokens : undefined,
     };
+    // Nothing is submitted yet: the buyer reviews the full breakdown first (FE-16).
+    setError('');
+    setReviewBody(orderBody);
+  }
+
+  // Freighter pays only plain XLM orders; escrow and path payments stay custodial.
+  const payWithFreighter = freighter.connected && !useEscrow && !sourceAsset;
+
+  async function confirmBuy() {
+    // The ref blocks a second click before React re-renders the disabled button.
+    if (!reviewBody || submittingRef.current) return;
+    submittingRef.current = true;
+    const orderBody = payWithFreighter ? { ...reviewBody, payment_method: 'sep7' } : reviewBody;
     const idempotencyKey = buyAttempt.keyFor(orderBody);
     setLoading(true);
     setError('');
+    let settled = false;
     try {
-      const res = await api.placeOrder(orderBody, idempotencyKey);
+      let res = await api.placeOrder(orderBody, idempotencyKey);
       buyAttempt.settle();
+      settled = true;
+      if (payWithFreighter) {
+        // Non-custodial: backend builds the unsigned XDR, Freighter signs it (FE-15).
+        const prepared = await api.prepareOrderPayment(res.orderId, freighter.publicKey);
+        const signed = await signWithFreighter(prepared.xdr, prepared.networkPassphrase);
+        res = await api.submitOrderPayment(res.orderId, signed);
+      }
+      setReviewBody(null);
       setResult({ ...res, escrow: useEscrow });
     } catch (e) {
-      buyAttempt.settle(e);
+      if (!settled) buyAttempt.settle(e);
       const msg = getStellarErrorMessage(e) || getErrorMessage(e);
+      setReviewBody(null);
       setError(msg);
       showToast(msg, 'error');
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
   }
 
@@ -802,8 +831,8 @@ export default function ProductDetail() {
 
   if (result) {
     return (
-      <div style={s.page}>
-        <div style={s.card}>
+      <div className="product-detail-page" style={s.page}>
+        <div className="product-detail-card" style={s.card}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>{result.escrow ? '🔒' : '✅'}</div>
           <div style={s.success}>
             {result.escrow ? (
@@ -847,6 +876,14 @@ export default function ProductDetail() {
                     🎁 Reward tokens redeemed: {result.rewardRedemption.tokens} (−{Number(result.rewardRedemption.discount).toFixed(2)} XLM)
                   </p>
                 )}
+                <p style={{ marginTop: 4, fontSize: 12, wordBreak: 'break-all', color: '#555' }}>
+                  TX:{' '}
+                  {result.txHash ? (
+                    <a href={explorerUrl('tx', result.txHash)} target="_blank" rel="noreferrer" style={{ color: '#2d6a4f' }}>
+                      {result.txHash}
+                    </a>
+                  ) : '—'}
+                </p>
                 {result.bundleDiscount && (
                   <p style={{ marginTop: 4, fontSize: 13, color: '#2d6a4f' }}>
                     🏷️ Bundle discount applied: −{result.bundleDiscount.amount.toFixed(4)} XLM ({result.bundleDiscount.percent}% off for {result.bundleDiscount.minProducts}+ products)
@@ -865,8 +902,8 @@ export default function ProductDetail() {
 
   if (confirming) {
     return (
-      <div style={s.page}>
-        <div style={s.card}>
+      <div className="product-detail-page" style={s.page}>
+        <div className="product-detail-card" style={s.card}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>⏳</div>
           <div style={s.confirming}>
             <strong>Confirming payment...</strong>
@@ -879,7 +916,7 @@ export default function ProductDetail() {
   }
 
   return (
-    <div style={s.page}>
+    <div className="product-detail-page" style={s.page}>
       <Helmet>
         <title>{shareTitle}</title>
         <meta name="description" content={shareDescription} />
@@ -893,7 +930,7 @@ export default function ProductDetail() {
         <meta name="twitter:description" content={shareDescription} />
         {shareImage ? <meta name="twitter:image" content={shareImage} /> : null}
       </Helmet>
-      <div style={s.card}>
+      <div className="product-detail-card" style={s.card}>
         {product.video_url ? (
           <video
             controls
@@ -978,7 +1015,14 @@ export default function ProductDetail() {
               <span style={{ cursor: 'pointer', textDecoration: 'underline', color: '#2d6a4f' }}
                 onClick={() => navigate(`/farmer/${product.farmer_id}`)}>
                 {product.farmer_name}
-              </span>
+              </span>{' '}
+              <button
+                type="button"
+                onClick={() => navigate(`/messages?to=${encodeURIComponent(product.farmer_id)}`)}
+                style={{ marginLeft: 8, background: 'none', border: '1px solid #2d6a4f', color: '#2d6a4f', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 13 }}
+              >
+                {t('inbox.messageFarmer')}
+              </button>
             </div>
             {product.farm_lat != null && product.farm_lng != null && (
               <div style={{ fontSize: 13, color: '#666', marginTop: 4 }}>
@@ -1179,7 +1223,7 @@ export default function ProductDetail() {
         {product.pricing_model !== 'fixed' && (
           <div style={{ marginBottom: 20 }}>
             <label style={s.label}>{product.pricing_model === 'pwyw' ? 'Pay What You Want' : 'Donation'}</label>
-            <div style={s.row}>
+            <div className="detail-purchase-row" style={s.row}>
               <input
                 style={{ ...s.input, width: 120 }}
                 type="number"
@@ -1284,7 +1328,7 @@ export default function ProductDetail() {
         {product.pricing_type === 'weight' ? (
           <div style={{ marginBottom: 20 }}>
             <label style={s.label}>Weight ({product.unit})</label>
-            <div style={s.row}>
+            <div className="detail-purchase-row" style={s.row}>
               <input
                 style={{ ...s.input, width: 120 }}
                 type="number"
@@ -1302,7 +1346,7 @@ export default function ProductDetail() {
             </div>
           </div>
         ) : (
-          <div style={s.row}>
+          <div className="detail-purchase-row" style={s.row}>
             <label style={{ fontSize: 14 }}>{t('productDetail.quantity')}</label>
             <input style={s.input} type="number" min={product.min_order_quantity || 1} max={currentStock} value={qty}
               onChange={e => {
@@ -1593,6 +1637,28 @@ export default function ProductDetail() {
               {loading && <div className="spinner-sm" style={{ width: 16, height: 16, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />}
               {loading ? t('productDetail.processing') : `${useEscrow ? t('productDetail.payToEscrow') : t('productDetail.buyNow')} · ${sourceAsset && pathEstimate ? `~${pathEstimate.sourceAmount.toFixed(4)} ${pathEstimate.sourceCode}` : `${total} XLM`}`}
             </button>
+            {reviewBody && (
+              <CheckoutReviewModal
+                lines={{
+                  unitPrice: Number(product.price),
+                  tierPrice: Number(effectiveUnitPrice),
+                  quantity: product.pricing_type === 'weight' ? `${parseFloat(weight) || 0} ${product.unit}` : qty,
+                  unit: product.unit,
+                  subtotal: Number(subtotal),
+                  couponDiscount: couponResult ? Number(couponResult.discount) : 0,
+                  couponCode: couponResult ? couponCode.trim() : '',
+                  bundleDiscount: 0,
+                  shipping: Number(product.shipping_fee || 0),
+                  total: Number(total),
+                }}
+                escrow={useEscrow}
+                payingWith={payWithFreighter ? `Freighter ${freighter.publicKey.slice(0, 6)}…${freighter.publicKey.slice(-4)}` : null}
+                blockedReason={payWithFreighter && freighter.mismatch ? 'Freighter is on a different network than this app. Switch networks in Freighter to continue.' : ''}
+                submitting={loading}
+                onConfirm={confirmBuy}
+                onCancel={() => setReviewBody(null)}
+              />
+            )}
             {user?.role === 'buyer' && (
               <button style={{ ...s.btn, background: '#1e40af', marginBottom: 12 }} onClick={handleWalletPay} disabled={walletLoading || currentStock === 0}>
                 {walletLoading ? '...' : `💳 Pay with Stellar Wallet · ${total} XLM`}

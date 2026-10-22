@@ -4,10 +4,14 @@ import { useSearchParams } from 'react-router-dom';
 import { api, newIdempotencyKey } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import Spinner from '../components/Spinner';
+import Pagination from '../components/Pagination';
+import { normalizePage } from '../hooks/usePaginatedQuery';
 import { useNetwork } from '../context/NetworkContext';
 import OrderStatusTimeline from '../components/orders/OrderStatusTimeline';
 import CarbonOffsetBadge from '../components/CarbonOffsetBadge';
 import { useModalA11y } from '../hooks/useModalA11y';
+import OpenDisputeModal from '../components/disputes/OpenDisputeModal';
+import DisputeDetail from '../components/disputes/DisputeDetail';
 
 import { getErrorMessage } from '../utils/errorMessages';
 // Poll orders stuck in `confirming` until confirmPayments settles them (#1501).
@@ -143,6 +147,34 @@ const s = {
   },
 };
 
+function StatusTimeline({ status }) {
+  if (status === 'failed')
+    return <div style={{ fontSize: 12, color: '#c0392b', marginTop: 8 }}>❌ Order failed</div>;
+  const currentIdx = TIMELINE_STEPS.indexOf(status);
+  return (
+    <div style={s.timeline}>
+      {TIMELINE_STEPS.map((step, i) => {
+        const done = i <= currentIdx;
+        return (
+          <React.Fragment key={step}>
+            <div style={s.step}>
+              <div style={{ ...s.stepDot, background: done ? '#2d6a4f' : '#ddd' }} />
+              <span style={{ color: done ? '#2d6a4f' : '#bbb', fontWeight: done ? 600 : 400 }}>
+                {STATUS_ICON[step]} {step}
+              </span>
+            </div>
+            {i < TIMELINE_STEPS.length - 1 && (
+              <div style={{ ...s.stepLine, background: i < currentIdx ? '#2d6a4f' : '#eee' }} />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+const ORDERS_PAGE_SIZE = 20;
+
 export default function Orders() {
   const { explorerUrl } = useNetwork();
   const [allOrders, setAllOrders] = useState([]);
@@ -153,6 +185,16 @@ export default function Orders() {
   const dateFrom = searchParams.get('date_from') || '';
   const dateTo = searchParams.get('date_to') || '';
   const sortBy = searchParams.get('sort') || 'newest';
+  // FE-21: page number lives in the URL (?page=3); filter changes reset it.
+  const page = Math.max(1, Number(searchParams.get('page')) || 1);
+  const [total, setTotal] = useState(0);
+
+  const setPage = (next) => {
+    const p = new URLSearchParams(searchParams);
+    if (next <= 1) p.delete('page'); else p.set('page', String(next));
+    setSearchParams(p);
+    window.scrollTo?.(0, 0);
+  };
 
   const setActiveTab = (tab) => {
     const p = {};
@@ -195,6 +237,8 @@ export default function Orders() {
   const [retryingId, setRetryingId] = useState(null);
   const [retryMsg, setRetryMsg] = useState({});
   const returnDialogRef = useModalA11y(returnModal != null, () => setReturnModal(null));
+  const [disputeTarget, setDisputeTarget] = useState(null); // order being disputed
+  const [disputeViewId, setDisputeViewId] = useState(null); // order id whose dispute is shown
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -205,11 +249,15 @@ export default function Orders() {
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;
       if (sortBy !== 'newest') params.sort = sortBy;
+      params.page = page;
+      params.limit = ORDERS_PAGE_SIZE;
       const [data, bundleData] = await Promise.all([
         api.getOrders(params),
         api.getBundleOrders().catch(() => ({ data: [] })),
       ]);
-      setAllOrders(Array.isArray(data) ? data : (data?.data ?? []));
+      const res = normalizePage(data);
+      setAllOrders(res.items);
+      setTotal(res.total);
       setBundleOrders(bundleData?.data ?? []);
     } catch (err) {
       setError(getErrorMessage(err));
@@ -217,7 +265,7 @@ export default function Orders() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, dateFrom, dateTo, sortBy]);
+  }, [activeTab, dateFrom, dateTo, sortBy, page]);
 
   useEffect(() => {
     load();
@@ -871,6 +919,27 @@ export default function Orders() {
                         {STATUS_ICON[o.status]} {o.status}
                       </span>
                       <span style={s.price}>{parseFloat(o.total_price).toFixed(2)} XLM</span>
+                      {o.dispute_id ? (
+                        <button
+                          type="button"
+                          onClick={() => setDisputeViewId(o.id)}
+                          style={{ fontSize: 12, padding: '5px 12px', borderRadius: 8, border: '1px solid #a04000', background: '#fff', color: '#a04000', cursor: 'pointer', fontWeight: 600 }}
+                        >
+                          ⚖️ View dispute
+                        </button>
+                      ) : (
+                        user?.role === 'buyer' &&
+                        o.status === 'paid' &&
+                        o.escrow_status && o.escrow_status !== 'none' && (
+                          <button
+                            type="button"
+                            onClick={() => setDisputeTarget(o)}
+                            style={{ fontSize: 12, padding: '5px 12px', borderRadius: 8, border: '1px solid #b42318', background: '#fff', color: '#b42318', cursor: 'pointer', fontWeight: 600 }}
+                          >
+                            ⚠️ Open dispute
+                          </button>
+                        )
+                      )}
                       {o.status === 'paid' && (
                         <button
                           style={{
@@ -967,6 +1036,29 @@ export default function Orders() {
       )}
 
       {/* Return request modal */}
+      {disputeTarget && (
+        <OpenDisputeModal
+          order={disputeTarget}
+          onClose={() => setDisputeTarget(null)}
+          onOpened={() => {
+            const id = disputeTarget.id;
+            setDisputeTarget(null);
+            setDisputeViewId(id);
+            load();
+          }}
+        />
+      )}
+      {disputeViewId && (
+        <DisputeDetail orderId={disputeViewId} onClose={() => setDisputeViewId(null)} />
+      )}
+      <Pagination
+        page={page}
+        totalPages={Math.ceil(total / ORDERS_PAGE_SIZE)}
+        total={total}
+        limit={ORDERS_PAGE_SIZE}
+        onChange={setPage}
+      />
+
       {returnModal && (
         <div
           style={{
