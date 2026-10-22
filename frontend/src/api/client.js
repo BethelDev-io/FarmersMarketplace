@@ -419,6 +419,8 @@ export const api = {
     request('/products/bulk-price', { method: 'PATCH', body: { updates, adjustment_percent } }),
 
   getAnalytics: () => request('/analytics/farmer'),
+  getAnalyticsRange: (from, to) =>
+    request(`/analytics/farmer/range?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
   getForecast: () => request('/analytics/farmer/forecast'),
   getWaitlistAnalytics: () => request('/analytics/farmer/waitlist'),
 
@@ -545,7 +547,8 @@ export const api = {
   getFarmerCooperatives: (farmerId) => request(`/cooperatives?farmer_id=${encodeURIComponent(farmerId)}`),
   setupMultisig: (id, body) => request(`/cooperatives/${id}/multisig-setup`, { method: 'POST', body }),
   initiateCoopTx: (id, body) => request(`/cooperatives/${id}/transactions`, { method: 'POST', body }),
-  signPendingTx: (txId) => request(`/cooperatives/transactions/${txId}/sign`, { method: 'POST' }),
+  signPendingTx: (txId, body) => request(`/cooperatives/transactions/${txId}/sign`, { method: 'POST', body }),
+  submitPendingTx: (txId) => request(`/cooperatives/transactions/${txId}/submit`, { method: 'POST' }),
   getPendingTxs: (coopId) => request(`/cooperatives/${coopId}/pending`),
   // Coupons
   getMyCoupons: () => request('/coupons'),
@@ -576,6 +579,7 @@ export const api = {
   cancelPaymentStream: (id) => request(`/streams/${id}/cancel`, { method: 'POST' }),
   decreasePaymentStreamRate: (id, rate) => request(`/streams/${id}/decrease-rate`, { method: 'PATCH', body: { rate } }),
   withdrawPaymentStream: (id) => request(`/streams/${id}/withdraw`, { method: 'POST' }),
+  topUpPaymentStream: (id, amount) => request(`/streams/${id}/top-up`, { method: 'POST', body: { amount } }),
   // Claimable balances
   getClaimableBalances: () => request('/wallet/claimable-balances'),
   claimBalance: (balance_id) => request('/wallet/claim', { method: 'POST', body: { balance_id } }),

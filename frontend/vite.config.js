@@ -43,6 +43,7 @@ const BACKEND_PATHS = [
   '/api',
   '/uploads',
   '/federation',
+  '/seo',
   '/.well-known',
   '/sitemap.xml',
   '/robots.txt',

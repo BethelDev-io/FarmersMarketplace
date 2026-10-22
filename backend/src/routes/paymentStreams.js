@@ -263,4 +263,49 @@ router.post('/:contractId/:streamId/cancel', auth, async (req, res) => {
   }
 });
 
+// POST /api/paymentStreams/:contractId/:streamId/top-up — add to the deposit
+// Sender-only. Body: { amount } in stroops. Mirrors stream.rs top_up().
+router.post('/:contractId/:streamId/top-up', auth, async (req, res) => {
+  const { contractId } = req.params;
+  const streamId = parseStreamId(req.params.streamId);
+  if (!validateContractId(contractId)) {
+    return err(res, 400, 'Invalid contractId format', 'invalid_contract_id');
+  }
+  if (streamId === null) return err(res, 400, 'Invalid streamId', 'validation_error');
+  const amount = Number(req.body?.amount);
+  if (!isPositiveNumber(amount)) return err(res, 400, 'amount must be a positive number', 'validation_error');
+
+  const tokenContractId = process.env.STREAM_TOKEN_CONTRACT_ID;
+  if (!tokenContractId) return err(res, 503, 'Stream token is not configured', 'not_configured');
+
+  const stream = await getStreamRow(contractId, streamId);
+  if (!stream) return err(res, 404, 'Stream not found', 'stream_not_found');
+  if (stream.cancelled) return err(res, 400, 'Stream is cancelled', 'invalid_state');
+
+  const caller = await getCallerStellarAddress(req.user.id);
+  if (caller?.stellar_public_key !== stream.sender) {
+    return err(res, 403, 'Only the stream sender can top up', 'forbidden');
+  }
+  if (!caller?.stellar_secret_key) {
+    return err(res, 400, 'No Stellar wallet on file for this account', 'no_wallet');
+  }
+
+  try {
+    const { hash, result } = await invokeContract({
+      contractId,
+      method: 'top_up',
+      signerSecret: caller.stellar_secret_key,
+      args: [
+        { type: 'u64', value: streamId },
+        { type: 'address', value: caller.stellar_public_key },
+        { type: 'address', value: tokenContractId },
+        { type: 'i128', value: BigInt(Math.round(amount)) },
+      ],
+    });
+    res.json({ success: true, txHash: hash, result });
+  } catch (e) {
+    err(res, 502, `Failed to top up stream: ${e.message}`, 'contract_error');
+  }
+});
+
 module.exports = router;

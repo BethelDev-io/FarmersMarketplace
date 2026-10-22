@@ -17,7 +17,8 @@ import CouponManager from '../components/dashboard/CouponManager';
 import CreatorEarningsPanel from '../components/dashboard/CreatorEarningsPanel';
 import OrderManagementPanel from '../components/dashboard/OrderManagementPanel';
 import BundleDiscountPanel from '../components/dashboard/BundleDiscountPanel';
-import PendingMultisigPanel from '../components/dashboard/PendingMultisigPanel';
+import PendingMultisigPanel, { multisigErrorMessage } from '../components/dashboard/PendingMultisigPanel';
+import FarmerAnalyticsPanel from '../components/dashboard/FarmerAnalyticsPanel';
 
 const s = {
   page: { maxWidth: 900, margin: '0 auto', padding: 16 },
@@ -878,7 +879,43 @@ export default function Dashboard() {
       else showToast(`Signature added (${res.signaturesCollected}/${res.required} required)`, 'info');
       load();
     } catch (e) {
-      showToast(`Error: ${getErrorMessage(e)}`, 'error');
+      showToast(`Error: ${multisigErrorMessage(e) || getErrorMessage(e)}`, 'error');
+    } finally {
+      setSigningTxId(null);
+    }
+  }
+
+  // FE-30: sign the exact payload (transaction hash, hex) with Freighter.
+  async function handleSignPendingTxWithFreighter(tx) {
+    const freighter = window.freighterApi;
+    if (!freighter?.signMessage || !freighter?.getAddress) {
+      showToast('Freighter is not available in this browser.', 'error');
+      return;
+    }
+    setSigningTxId(tx.id);
+    try {
+      const { address } = await freighter.getAddress();
+      const signed = await freighter.signMessage(tx.payload_hex, { address });
+      const signature = signed?.signedMessage ?? signed;
+      if (!signature || signed?.error) throw new Error(signed?.error?.message || 'Freighter declined to sign');
+      const res = await api.signPendingTx(tx.id, { signature, public_key: address });
+      showToast(`Signature added (${res.signaturesCollected}/${res.required} required)`, 'info');
+      load();
+    } catch (e) {
+      showToast(`Error: ${multisigErrorMessage(e)}`, 'error');
+    } finally {
+      setSigningTxId(null);
+    }
+  }
+
+  async function handleSubmitPendingTx(txId) {
+    setSigningTxId(txId);
+    try {
+      const res = await api.submitPendingTx(txId);
+      showToast(`✅ Release submitted! TX: ${res.txHash}`, 'success');
+      load();
+    } catch (e) {
+      showToast(`Error: ${multisigErrorMessage(e)}`, 'error');
     } finally {
       setSigningTxId(null);
     }
@@ -1136,6 +1173,9 @@ export default function Dashboard() {
           {rate ? `1 XLM ≈ $${rate.toFixed(4)} USDC` : 'Rate unavailable'}
         </div>
       </div>
+
+      {/* Analytics (FE-29) */}
+      <FarmerAnalyticsPanel />
 
       {/* Waitlist Analytics */}
       <WaitlistAnalyticsPanel rows={waitlistAnalytics} />
@@ -1879,6 +1919,8 @@ export default function Dashboard() {
         pendingTxs={pendingTxs}
         signingTxId={signingTxId}
         onSign={handleSignPendingTx}
+        onSignWithFreighter={handleSignPendingTxWithFreighter}
+        onSubmit={handleSubmitPendingTx}
       />
 
             {/* QR Code Modal */}
