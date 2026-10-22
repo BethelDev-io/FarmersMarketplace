@@ -97,6 +97,7 @@
       "resend": "Resend verification email",
       "resent": "If your account needs verification, a new email has been sent.",
       "dismiss": "Dismiss"
+    },
     "mfa": {
       "prompt": "Enter the 6-digit code from your authenticator app.",
       "backupPrompt": "Enter one of your backup codes.",
@@ -338,6 +339,7 @@
     "invalid_code": "That verification code is incorrect.",
     "totp_required": "Enter your two-factor authentication code to continue.",
     "not_found": "We couldn't find what you were looking for."
+  },
   "notFound": {
     "title": "404 - Page Not Found",
     "body": "The page you're looking for doesn't exist. It may have been moved or deleted.",

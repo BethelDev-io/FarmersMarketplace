@@ -305,12 +305,13 @@ export default function ImageCropModal({ src, onConfirm, onCancel, isGalleryImag
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Crop Image"
+        aria-labelledby="crop-modal-title"
+        aria-describedby="crop-modal-help"
         tabIndex={-1}
         style={{ background: '#fff', borderRadius: 14, padding: 24, maxWidth: 540, width: '95%', boxShadow: '0 8px 32px #0004', outline: 'none' }}
       >
-        <div style={{ fontWeight: 700, fontSize: 16, color: '#2d6a4f', marginBottom: 12 }}>Crop Image</div>
-        <div style={{ fontSize: 13, color: '#888', marginBottom: 8 }}>
+        <h2 id="crop-modal-title" style={{ fontWeight: 700, fontSize: 16, color: '#2d6a4f', margin: '0 0 12px' }}>Crop Image</h2>
+        <div id="crop-modal-help" style={{ fontSize: 13, color: '#595959', marginBottom: 8 }}>
           Drag the box to move · drag a corner to resize · Tab cycles handles · arrow keys nudge
         </div>
 

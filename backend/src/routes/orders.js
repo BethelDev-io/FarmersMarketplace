@@ -53,6 +53,7 @@ const { broadcastStockUpdate } = require('../utils/stockUpdates');
 const { couponNowExpression } = require('../utils/couponTime');
 const { decryptUserSecretKey } = require('../utils/crypto');
 const { transition } = require('../models/orderStatus');
+const { getRewardSummary, maxRedeemableTokens, redeemRewardTokens, reissueRedeemedTokens } = require('../utils/rewardTokens');
 
 // XLM per kg per km
 const SHIPPING_RATE = 0.001;
@@ -562,7 +563,38 @@ router.post('/', auth, requireEmailVerified, orderRateLimit, validate.order, asy
     logger.warn('[orders] Bundle discount lookup failed', { error: error.message });
   }
 
-  const totalPrice = parseFloat((subtotal - discount - bundleDiscount).toFixed(7));
+  const preRewardTotal = parseFloat((subtotal - discount - bundleDiscount).toFixed(7));
+
+  // Reward tokens (#1504): capped by vested balance and max_redemption_bps × order total.
+  let rewardTokens = 0;
+  let rewardDiscount = 0;
+  let rewardRedeemTxHash = null;
+  const requestedRewardTokens = parseInt(req.body.reward_tokens, 10) || 0;
+  if (requestedRewardTokens > 0) {
+    if (req.body.payment_method === 'sep7' || (_sourceAssetCode && _sourceAssetCode !== 'XLM')) {
+      return err(res, 422, 'Reward tokens can only be redeemed on direct XLM payments', 'reward_redemption_unsupported');
+    }
+    let summary;
+    try {
+      summary = await getRewardSummary(buyer.stellar_public_key);
+    } catch (e) {
+      return err(res, 502, 'Unable to read reward token balance: ' + e.message, 'reward_lookup_failed');
+    }
+    if (!summary.configured) return err(res, 422, 'Reward tokens are not enabled', 'rewards_disabled');
+    const maxTokens = maxRedeemableTokens({
+      vested: summary.vested,
+      maxRedemptionBps: summary.maxRedemptionBps,
+      orderTotal: preRewardTotal,
+      xlmPerToken: summary.xlmPerToken,
+    });
+    if (requestedRewardTokens > maxTokens) {
+      return err(res, 422, `You can redeem at most ${maxTokens} reward tokens on this order`, 'reward_redemption_exceeds_limit');
+    }
+    rewardTokens = requestedRewardTokens;
+    rewardDiscount = parseFloat((rewardTokens * summary.xlmPerToken).toFixed(7));
+  }
+
+  const totalPrice = parseFloat((preRewardTotal - rewardDiscount).toFixed(7));
   if (totalPrice <= 0)
     return err(res, 422, 'Coupon discount must leave a positive order total', 'zero_order_total');
 
@@ -720,27 +752,29 @@ router.post('/', auth, requireEmailVerified, orderRateLimit, validate.order, asy
       paymentLink,
       message: 'Order created for SEP-0007 payment',
     };
-    if (idempotencyKey) await cacheResponse(idempotencyKey, { ...responseData, _status: 200 });
-    return res.json(responseData);
     if (idempotencyKey) await cacheResponse(idempotencyKey, { ...responseData, _status: 200 }, undefined, req.user.id);
     return res.status(200).json(responseData);
-  const stockUpdate = await db.query(
-    `UPDATE products
-     SET quantity = quantity - $1
-     WHERE id = $2 AND quantity >= $1`,
-    [quantity, product_id]
-  );
-  if (!stockUpdate.rowCount || stockUpdate.rowCount === 0) {
-    return err(res, 409, 'Insufficient stock for this product', 'out_of_stock');
   }
 
-  let couponUseId = null;
-  if (appliedCoupon) {
-    couponUseId = await reserveCoupon(appliedCoupon.id, req.user.id);
-    if (couponUseId == null) {
-      await db.query('UPDATE orders SET status = $1 WHERE id = $2', ['failed', orderId]);
+  // Reward token redemption (#1504) — burn before paying so the discount is never given for free.
+  if (rewardTokens > 0) {
+    try {
+      rewardRedeemTxHash = await redeemRewardTokens({
+        buyerSecret: await decryptUserSecretKey(buyer.stellar_secret_key),
+        buyerPublicKey: buyer.stellar_public_key,
+        orderId,
+        amount: rewardTokens,
+      });
+      await db.query(
+        'UPDATE orders SET reward_tokens_redeemed = $1, reward_discount = $2, reward_redeem_tx_hash = $3 WHERE id = $4',
+        [rewardTokens, rewardDiscount, rewardRedeemTxHash, orderId]
+      );
+    } catch (e) {
+      logger.warn('[Rewards] Redemption failed', { orderId, error: e.message });
+      if (couponUseId != null) await releaseCoupon(appliedCoupon.id, req.user.id, couponUseId);
+      await transition(orderId, 'pending', 'failed', { actor: 'checkout', reason: 'reward_redemption_failed' });
       await restoreProductStock(product_id, quantity);
-      return err(res, 409, 'Coupon usage limit reached', 'coupon_exhausted');
+      return err(res, 402, 'Reward token redemption failed: ' + e.message, 'reward_redemption_failed');
     }
   }
 
@@ -880,6 +914,7 @@ router.post('/', auth, requireEmailVerified, orderRateLimit, validate.order, asy
     if (rewardAmount > 0 && buyer.stellar_public_key) {
       try {
         Promise.resolve(mintRewardTokens(buyer.stellar_public_key, rewardAmount))
+          .then((mintHash) => mintHash && db.query('UPDATE orders SET reward_mint_tx_hash = $1 WHERE id = $2', [mintHash, orderId]))
           .catch((e) => logger.warn('[Rewards] Mint failed (non-fatal):', { error: e.message }));
       } catch (e) {
         logger.warn('[Rewards] Mint failed (non-fatal):', { error: e.message });
@@ -902,6 +937,7 @@ router.post('/', auth, requireEmailVerified, orderRateLimit, validate.order, asy
       preorderDeliveryDate: product.preorder_delivery_date || null,
       claimableBalanceId: balanceId,
       sourceAsset: usePathPayment ? _sourceAssetCode : 'XLM',
+      rewardRedemption: rewardTokens > 0 ? { tokens: rewardTokens, discount: rewardDiscount, txHash: rewardRedeemTxHash } : undefined,
     };
     if (idempotencyKey) await cacheResponse(idempotencyKey, { ...responseData, _status: 200 }, undefined, req.user.id);
     return res.status(200).json(responseData);
@@ -915,6 +951,10 @@ router.post('/', auth, requireEmailVerified, orderRateLimit, validate.order, asy
       await db.query('DELETE FROM orders WHERE id = $1', [orderId]);
       await restoreProductStock(product_id, quantity);
       return res.status(402).json({ success: false, code: 'no_payment_path', message: e.message || 'Path payment could not be completed' });
+    }
+    if (rewardRedeemTxHash) {
+      reissueRedeemedTokens({ buyerPublicKey: buyer.stellar_public_key, orderId, amount: rewardTokens })
+        .catch((re) => logger.error('[Rewards] Reissue after failed payment failed', { orderId, error: re.message }));
     }
     await transition(orderId, 'pending', 'failed', { actor: 'checkout', reason: e.code || 'payment_failed' });
     await restoreProductStock(product_id, quantity);
@@ -950,6 +990,9 @@ router.get('/', auth, async (req, res) => {
             a.label as address_label, a.street as address_street, a.city as address_city,
             a.country as address_country, a.postal_code as address_postal_code,
             rr.status as return_status, rr.reason as return_reason, rr.reject_reason, rr.refund_tx_hash,
+            (SELECT h.reason FROM order_status_history h
+              WHERE h.order_id = o.id AND h.to_status = 'failed'
+              ORDER BY h.created_at DESC, h.id DESC LIMIT 1) as failure_reason
             (SELECT d.id FROM disputes d WHERE d.order_id = o.id) as dispute_id
      FROM orders o
      JOIN products p ON o.product_id = p.id
@@ -1025,6 +1068,49 @@ router.get('/sales', auth, async (req, res) => {
   }));
 
   res.json({ success: true, data, total, page, limit, totalPages: Math.ceil(total / limit) });
+});
+
+// GET /api/orders/:id/history — status timeline from order_status_history + escrow state (#1501)
+router.get('/:id/history', auth, async (req, res) => {
+  const { rows } = await db.query(
+    `SELECT o.*, p.farmer_id FROM orders o JOIN products p ON o.product_id = p.id WHERE o.id = $1`,
+    [req.params.id]
+  );
+  const order = rows[0];
+  if (!order) return err(res, 404, 'Order not found', 'not_found');
+  if (order.buyer_id !== req.user.id && order.farmer_id !== req.user.id && req.user.role !== 'admin') {
+    return err(res, 403, 'Forbidden', 'forbidden');
+  }
+
+  const { rows: history } = await db.query(
+    `SELECT from_status, to_status, reason, created_at
+     FROM order_status_history WHERE order_id = $1
+     ORDER BY created_at ASC, id ASC`,
+    [order.id]
+  );
+
+  const escrowed = !!(order.escrow_status || (order.escrow_balance_id && String(order.escrow_balance_id).startsWith('soroban:')));
+  let autoReleaseAt = null;
+  if (escrowed) {
+    const timeoutDays = parseInt(process.env.SOROBAN_ESCROW_TIMEOUT_DAYS || '14', 10);
+    const createdMs = new Date(order.created_at).getTime();
+    if (Number.isFinite(createdMs)) autoReleaseAt = new Date(createdMs + timeoutDays * 86400000).toISOString();
+  }
+  const failed = [...history].reverse().find((h) => h.to_status === 'failed');
+
+  res.json({
+    success: true,
+    data: {
+      id: order.id,
+      status: order.status,
+      created_at: order.created_at,
+      failure_reason: failed ? failed.reason : null,
+      history,
+      escrow: escrowed
+        ? { state: order.escrow_status || 'held', auto_release_at: autoReleaseAt }
+        : null,
+    },
+  });
 });
 
 // PATCH /api/orders/:id/status
@@ -1464,7 +1550,8 @@ router.get('/:id/carbon', auth, async (req, res) => {
   }
 
   try {
-    const offset = await getCarbonOffset(order.id);
+    const sim = await getCarbonOffset(order.id);
+    const offset = sim && typeof sim === 'object' && 'success' in sim ? (sim.success ? sim.result : null) : sim;
     if (!offset) {
       return err(res, 404, 'No carbon offset record found for this order', 'not_found');
     }
@@ -1473,6 +1560,9 @@ router.get('/:id/carbon', auth, async (req, res) => {
       success: true,
       data: {
         ...offset,
+        kg_co2: Number(offset.kg_co2 ?? 0),
+        order_id: Number(offset.order_id ?? order.id),
+        contractId: process.env.SOROBAN_CARBON_OFFSET_CONTRACT_ID || null,
         certificateUrl: `${base}/orders/${order.id}/carbon-certificate`,
       },
     });

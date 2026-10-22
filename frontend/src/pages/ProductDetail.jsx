@@ -51,6 +51,7 @@ import { useReviewForm } from '../hooks/useReviewForm';
 import { usePaymentLink } from '../hooks/usePaymentLink';
 import { addRecentlyViewed } from '../utils/recentlyViewed';
 import { useNetwork } from '../context/NetworkContext';
+import { useModalA11y } from '../hooks/useModalA11y';
 import NotFound from './NotFound';
 
 const s = {
@@ -224,6 +225,9 @@ export default function ProductDetail() {
   // Coupon state
   const [couponCode, setCouponCode] = useState('');
   const [couponResult, setCouponResult] = useState(null); // { discount, final_total, discount_type, discount_value }
+  const [rewardInfo, setRewardInfo] = useState(null); // GET /rewards for this order total (#1504)
+  const [useRewards, setUseRewards] = useState(false);
+  const [rewardTokens, setRewardTokens] = useState(0);
   const [couponError, setCouponError] = useState('');
   const [couponLoading, setCouponLoading] = useState(false);
   const [walletPaymentOpen, setWalletPaymentOpen] = useState(false);
@@ -304,7 +308,8 @@ export default function ProductDetail() {
    const review = useReviewForm(id, { onSuccess: handleReviewSuccess });
    const { setReviewOrderId } = review;
 
-   const { paymentLinkData, paymentLinkLoading, paymentLinkError, generatePaymentLink, setPaymentLinkError } = usePaymentLink();
+   const { paymentLinkData, paymentLinkLoading, paymentLinkError, generatePaymentLink, setPaymentLinkError, setPaymentLinkData } = usePaymentLink();
+   const paymentLinkDialogRef = useModalA11y(!!paymentLinkData, () => setPaymentLinkData(null));
 
    useEffect(() => {
     setNotFound(false);
@@ -445,6 +450,15 @@ export default function ProductDetail() {
     if (!n) return;
     api.getFeePreview(n).then(r => setFeeInfo(r)).catch(() => setFeeInfo(null));
   }, [_previewTotal]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const n = parseFloat(_previewTotal);
+    if (!n || user?.role !== 'buyer') return;
+    Promise.resolve(api.getRewards?.(n)).then(r => {
+      const d = r?.data;
+      setRewardInfo(d?.configured ? d : null);
+      setRewardTokens(t => Math.min(t, d?.maxRedeemable ?? 0));
+    }).catch(() => setRewardInfo(null));
+  }, [_previewTotal, user?.role]); // eslint-disable-line react-hooks/exhaustive-deps
   // SSE: connect to stock-stream for real-time stock updates
   useEffect(() => {
     mountedRef.current = true;
@@ -660,6 +674,7 @@ export default function ProductDetail() {
       source_asset: sourceAsset ? { code: sourceAsset.asset_code, issuer: sourceAsset.asset_issuer } : undefined,
       weight: product.pricing_type === 'weight' ? parseFloat(weight) : undefined,
       custom_price: (product.pricing_model === 'pwyw' || product.pricing_model === 'donation') ? parseFloat(customPrice) : undefined,
+      reward_tokens: useRewards && rewardTokens > 0 && !sourceAsset ? rewardTokens : undefined,
     };
     // Nothing is submitted yet: the buyer reviews the full breakdown first (FE-16).
     setError('');
@@ -854,6 +869,12 @@ export default function ProductDetail() {
                 <p style={{ marginTop: 8, fontSize: 14 }}>{t('productDetail.orderInfo', { id: result.orderId, price: result.totalPrice })}</p>
                 {result.sourceAsset && result.sourceAsset !== 'XLM' && (
                   <p style={{ marginTop: 4, fontSize: 13, color: '#555' }}>Paid via path payment using <strong>{result.sourceAsset}</strong></p>
+                )}
+                <p style={{ marginTop: 4, fontSize: 12, wordBreak: 'break-all', color: '#555' }}>TX: {result.txHash}</p>
+                {result.rewardRedemption && (
+                  <p style={{ marginTop: 4, fontSize: 13, color: '#2d6a4f' }} data-testid="receipt-reward-discount">
+                    🎁 Reward tokens redeemed: {result.rewardRedemption.tokens} (−{Number(result.rewardRedemption.discount).toFixed(2)} XLM)
+                  </p>
                 )}
                 <p style={{ marginTop: 4, fontSize: 12, wordBreak: 'break-all', color: '#555' }}>
                   TX:{' '}
@@ -1392,6 +1413,25 @@ export default function ProductDetail() {
           ) : (
             <>Total: <strong>{total} XLM</strong></>
           )}
+          {rewardInfo && rewardInfo.maxRedeemable > 0 && !sourceAsset && (
+            <div style={{ marginTop: 8, fontSize: 13 }} data-testid="reward-redeem">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input type="checkbox" checked={useRewards} onChange={e => { setUseRewards(e.target.checked); if (e.target.checked && !rewardTokens) setRewardTokens(rewardInfo.maxRedeemable); }} />
+                Use reward tokens ({rewardInfo.vested} {rewardInfo.symbol} vested)
+              </label>
+              {useRewards && (
+                <>
+                  <label htmlFor="reward-slider" className="sr-only">Reward tokens to redeem</label>
+                  <input id="reward-slider" type="range" min={0} max={rewardInfo.maxRedeemable} step={1} value={rewardTokens}
+                    onChange={e => setRewardTokens(Number(e.target.value))} style={{ width: '100%' }}
+                    aria-valuetext={`${rewardTokens} ${rewardInfo.symbol}, ${(rewardTokens * rewardInfo.xlmPerToken).toFixed(2)} XLM off`} />
+                  <div style={{ color: '#2d6a4f' }}>
+                    Reward discount: −{(rewardTokens * rewardInfo.xlmPerToken).toFixed(2)} XLM ({rewardTokens} {rewardInfo.symbol}, max {rewardInfo.maxRedeemable})
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           {feeInfo && feeInfo.feeAmount > 0 && (
             <div style={{ marginTop: 8, fontSize: 12, color: '#888', borderTop: '1px solid #e0e0e0', paddingTop: 6 }}>
               <div>Subtotal: {total} XLM</div>
@@ -1630,10 +1670,10 @@ export default function ProductDetail() {
             {paymentLinkError && <div style={{ ...s.err, marginTop: 8 }}>{paymentLinkError}</div>}
             {paymentLinkData && (
               <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-                <div style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 360, width: '90%', boxShadow: '0 4px 24px #0003' }}>
+                <div ref={paymentLinkDialogRef} role="dialog" aria-modal="true" aria-labelledby="sep7-modal-title" tabIndex={-1} style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 360, width: '90%', boxShadow: '0 4px 24px #0003' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                    <div style={{ fontWeight: 700, fontSize: 16, color: '#2d6a4f' }}>SEP-0007 Payment Link</div>
-                    <button onClick={() => setPaymentLinkData(null)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#888' }} aria-label="Close">✕</button>
+                    <h2 id="sep7-modal-title" style={{ fontWeight: 700, fontSize: 16, color: '#2d6a4f', margin: 0 }}>SEP-0007 Payment Link</h2>
+                    <button onClick={() => setPaymentLinkData(null)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#595959' }} aria-label="Close">✕</button>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
                     <QRCode value={paymentLinkData.paymentLink} size={200} />

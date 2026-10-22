@@ -189,6 +189,36 @@ module.exports = {
         },
         { message: 'Either product_id (with quantity) or bundle_id must be provided, but not both' }
       )
+      .optional(),
+    address_id: z.coerce.number().int().positive().optional(),
+    use_soroban_escrow: z.coerce.boolean().optional(),
+    payment_method: z.enum(['sep7']).optional(),
+    weight: z.coerce.number().positive('weight must be a positive number').optional(),
+    custom_price: z.coerce.number().positive('custom_price must be a positive number').optional(),
+    coupon_code: z.string().optional(),
+    source_asset: z.object({
+      code: z.string(),
+      issuer: z.string().optional(),
+    }).optional(),
+    source_asset_code: z.string().optional(),
+    source_asset_issuer: z.string().optional(),
+    max_source_amount: z.coerce.number().positive('max_source_amount must be a positive number').optional(),
+    bundle_id: z.coerce.number().int().positive('bundle_id must be a positive integer').optional(),
+    reward_tokens: z.coerce.number().int().nonnegative('reward_tokens must be a non-negative integer').optional(),
+  }).refine(data => {
+    // Either product_id (single product) or bundle_id (bundle) must be provided
+    if (!data.product_id && !data.bundle_id) {
+      return false;
+    }
+    if (data.product_id && data.bundle_id) {
+      return false;
+    }
+    // If bundle_id is provided, quantity should not be used (bundle has its own quantities)
+    if (data.bundle_id && data.quantity) {
+      return false;
+    }
+    return true;
+  }, { message: 'Either product_id (with quantity) or bundle_id must be provided, but not both' })),
   ),
   updateOrderStatus: validate(
     z.object({
